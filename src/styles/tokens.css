@@ -1,0 +1,23 @@
+/* Палитра из спеки и утверждённых макетов (docs/design/). */
+:root {
+  --bg: #0f1117;
+  --panel: #161922;
+  --card: #1b1f2b;
+  --card-2: #232838;
+  --card-hover: #1f2432;
+  --img: #20253a;
+  --line: #262b3a;
+  --text: #eceef5;
+  --text-2: #9aa0b4;
+  --text-3: #6c7287;
+  --acc: #5b5bf7;
+  --acc-2: #7171ff;
+  --acc-bg: rgba(91, 91, 247, 0.14);
+  --ok: #3ecf8e;
+  --warn: #f2b84b;
+  --bad: #f0625f;
+  --bad-bg: rgba(240, 98, 95, 0.12);
+  --card-h: 192px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  color-scheme: dark;
+}

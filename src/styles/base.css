@@ -1,0 +1,63 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 500 14px/1.45 'Manrope', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+#app { height: 100%; }
+::selection { background: var(--acc); color: #fff; }
+h1, h2, h3, p, ul, ol, dl, dd { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+button, input, select, textarea { font: inherit; color: inherit; }
+button { border: 0; background: none; padding: 0; cursor: pointer; }
+button:disabled { cursor: default; opacity: 0.45; }
+:focus-visible { outline: 2px solid var(--acc-2); outline-offset: 2px; }
+
+* { scrollbar-width: thin; scrollbar-color: var(--card-2) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--card-2); border-radius: 5px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-track { background: transparent; }
+
+.ti { line-height: 1; }
+.num { font-variant-numeric: tabular-nums; }
+.muted { color: var(--text-2); }
+.grow { flex: 1; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.btn {
+  height: 44px; padding: 0 16px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-weight: 800; font-size: 14px;
+  transition: background-color 0.15s var(--ease);
+}
+.btn .ti { font-size: 18px; }
+.btn.pri { background: var(--acc); color: #fff; }
+.btn.pri:hover:not(:disabled) { background: var(--acc-2); }
+.btn.sec { background: var(--card-2); color: var(--text); }
+.btn.sec:hover:not(:disabled) { background: #2b3144; }
+.btn.danger { background: var(--bad-bg); color: #ff8f8c; }
+.link { color: var(--acc-2); font-weight: 700; }
+.link:hover { text-decoration: underline; }
+
+.range {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 6px; border-radius: 3px; cursor: pointer;
+  background: linear-gradient(to right, var(--acc) var(--fill, 0%), var(--card-2) var(--fill, 0%));
+}
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.range::-moz-range-thumb {
+  width: 18px; height: 18px; border: 0; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+.range:focus-visible { outline-offset: 6px; }
+
+@keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+@keyframes fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
