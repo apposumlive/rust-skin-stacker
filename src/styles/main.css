@@ -63,7 +63,8 @@
 .sort-wrap { margin-left: auto; height: 34px; padding: 0 4px 0 12px; border-radius: 8px; background: var(--card); display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; }
 .sort { height: 100%; border: 0; background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; }
 .sort option { background: var(--card); color: var(--text); }
-.scroller { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 16px; }
+/* Ряды двигает сдвиг grid.ts (translateY); привязка прокрутки браузера принимала его за смещение и дёргала scrollTop. */
+.scroller { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; padding-bottom: 16px; }
 .spacer { position: relative; }
 .grid { position: absolute; top: 0; left: 0; right: 0; display: grid; gap: 12px; grid-auto-rows: var(--card-h); }
 .card {

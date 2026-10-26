@@ -6,6 +6,7 @@ import { fmtInt } from '../format';
 import { t } from '../i18n';
 import { categoriesOf, counts, totals, type Show } from '../model';
 import { getState, type State } from '../store';
+import type { Category } from '../types';
 import type { Part } from './shell';
 
 const SHOWS: Show[] = ['all', 'stacks', 'dupes'];
@@ -55,51 +56,74 @@ export function createFilters(el: HTMLElement): Part {
     stats,
   );
 
-  let lastInventory: State['inventory'] = null;
+  // Кнопки «Тип» по id категории. Список перестраивается, только когда сменился набор категорий:
+  // иначе нажатие пробела на флажке удаляло бы его, и фокус падал бы на <body>.
+  const typeButtons = new Map<string, HTMLElement>();
+  let typesKey: string | null = null;
+  const paintTypes = (list: Category[]) => {
+    const key = list.map((category) => `${category.id}\n${category.label}`).join('\n\n');
+    if (key === typesKey) return;
+    typesKey = key;
+    typeButtons.clear();
+    types.replaceChildren(
+      ...(list.length
+        ? list.map((category) => {
+            const button = h(
+              'button',
+              { class: 'opt', type: 'button', role: 'checkbox', 'aria-checked': 'false', onclick: () => toggleCategory(category.id) },
+              h('span', { class: 'box' }, icon('check')),
+              category.label,
+            );
+            typeButtons.set(category.id, button);
+            return button;
+          })
+        : [h('p', { class: 'muted small' }, t('filters.noTypes'))]),
+    );
+  };
+
+  const paintStats = (inv: State['inventory']) => {
+    if (!inv) {
+      stats.replaceChildren();
+      return;
+    }
+    const sum = totals(inv);
+    const rows = [
+      statRow(t('stats.total'), t('card.total', { count: fmtInt(sum.items) })),
+      statRow(t('stats.records'), fmtInt(sum.records)),
+      statRow(t('stats.stacks'), fmtInt(sum.stacks)),
+    ];
+    if (sum.unreadable) rows.push(statRow(t('stats.unreadable'), fmtInt(sum.unreadable)));
+    stats.replaceChildren(...rows);
+  };
+
+  let lastInventory: State['inventory'] | undefined; // undefined — ещё ничего не рисовали
   let lastFilter: State['filter'] | null = null;
   return {
     update(s) {
       if (s.inventory === lastInventory && s.filter === lastFilter) return;
+      const inventoryChanged = s.inventory !== lastInventory;
       lastInventory = s.inventory;
       lastFilter = s.filter;
       if (document.activeElement !== search && search.value !== s.filter.search) search.value = s.filter.search;
 
+      // Числа, категории и итоги зависят только от инвентаря; фильтр меняет лишь отметки.
       const inv = s.inventory;
-      const c = inv ? counts(inv) : null;
+      if (inventoryChanged) {
+        const c = inv ? counts(inv) : null;
+        for (const o of shows) o.count.textContent = c ? fmtInt(c[o.value]) : '';
+        paintTypes(inv ? categoriesOf(inv) : []);
+        paintStats(inv);
+      }
       for (const o of shows) {
         const on = s.filter.show === o.value;
         o.button.classList.toggle('on', on);
         o.button.setAttribute('aria-checked', String(on));
-        o.count.textContent = c ? fmtInt(c[o.value]) : '';
       }
-
-      const list = inv ? categoriesOf(inv) : [];
-      types.replaceChildren(
-        ...(list.length
-          ? list.map((category) => {
-              const on = s.filter.categories.includes(category.id);
-              return h(
-                'button',
-                { class: on ? 'opt on' : 'opt', type: 'button', role: 'checkbox', 'aria-checked': String(on), onclick: () => toggleCategory(category.id) },
-                h('span', { class: 'box' }, icon('check')),
-                category.label,
-              );
-            })
-          : [h('p', { class: 'muted small' }, t('filters.noTypes'))]),
-      );
-
-      if (!inv) {
-        stats.replaceChildren();
-        return;
+      for (const [id, button] of typeButtons) {
+        const on = s.filter.categories.includes(id);
+        button.classList.toggle('on', on);
+        button.setAttribute('aria-checked', String(on));
       }
-      const sum = totals(inv);
-      const rows = [
-        statRow(t('stats.total'), t('card.total', { count: fmtInt(sum.items) })),
-        statRow(t('stats.records'), fmtInt(sum.records)),
-        statRow(t('stats.stacks'), fmtInt(sum.stacks)),
-      ];
-      if (sum.unreadable) rows.push(statRow(t('stats.unreadable'), fmtInt(sum.unreadable)));
-      stats.replaceChildren(...rows);
     },
   };
 }
