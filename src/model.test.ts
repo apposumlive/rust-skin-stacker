@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from './i18n';
 import {
-  apartRecords, canCombine, categoriesOf, counts, defaultFilter, layoutOf, layoutText, nextSelection,
+  apartRecords, canCombine, categoriesOf, clampCount, counts, defaultFilter, layoutOf, layoutText, nextSelection,
   pillsOf, splitCapacity, totals, visibleSkins,
 } from './model';
 import type { Inventory, InvRecord, Skin } from './types';
@@ -87,5 +87,29 @@ describe('model', () => {
     sel = nextSelection({ selected: ['c'], anchor: 'c' }, 'a', 'range', order);
     expect(sel.selected).toEqual(['a', 'b', 'c']);
     expect(nextSelection({ selected: [], anchor: null }, 'c', 'range', order)).toEqual({ selected: ['c'], anchor: 'c' });
+  });
+
+  it('clamps the split-off count to 1..capacity', () => {
+    expect(clampCount(4, 8)).toBe(4);
+    expect(clampCount(1, 8)).toBe(1);
+    expect(clampCount(8, 8)).toBe(8);
+    // Не целые числа округляются.
+    expect(clampCount(2.4, 8)).toBe(2);
+    expect(clampCount(2.5, 8)).toBe(3);
+    expect(clampCount(7.6, 8)).toBe(8);
+    // Меньше единицы и не число — единица.
+    expect(clampCount(0, 8)).toBe(1);
+    expect(clampCount(0.4, 8)).toBe(1);
+    expect(clampCount(-3, 8)).toBe(1);
+    expect(clampCount(Number.NaN, 8)).toBe(1);
+    expect(clampCount(Number.NEGATIVE_INFINITY, 8)).toBe(1);
+    // Больше вместимости — вместимость.
+    expect(clampCount(9, 8)).toBe(8);
+    expect(clampCount(1e9, 8)).toBe(8);
+    expect(clampCount(Number.POSITIVE_INFINITY, 8)).toBe(8);
+    // Вместимость 1 (или меньше): выбирать не из чего.
+    expect(clampCount(5, 1)).toBe(1);
+    expect(clampCount(1, 1)).toBe(1);
+    expect(clampCount(3, 0)).toBe(1);
   });
 });

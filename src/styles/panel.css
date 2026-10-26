@@ -1,4 +1,6 @@
-.panel { display: flex; flex-direction: column; min-height: 100%; animation: rise 0.2s var(--ease); }
+.panel { display: flex; flex-direction: column; min-height: 100%; }
+/* Появление только когда на месте стал другой вид: обновление хода и выбора в нём не мигает. */
+.panel.enter { animation: rise 0.2s var(--ease); }
 .wide { width: 100%; }
 .foot { margin-top: auto; padding-top: 14px; font-size: 12px; color: var(--text-3); line-height: 1.5; }
 .note { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; color: var(--warn); }
@@ -32,6 +34,7 @@
 .sec .range { margin: 18px 0 6px; }
 .ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); }
 .preview { margin-top: 12px; font-size: 13px; color: var(--text-2); min-height: 38px; }
+.preview.err { color: var(--bad); }
 .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
 .acts.one { grid-template-columns: 1fr; }
 

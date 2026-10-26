@@ -25,6 +25,12 @@ export function fmtDuration(seconds: number): string {
   return t('time.hoursMinutes', { h: Math.floor(m / 60), m: m % 60 });
 }
 
+/** Сколько секунд осталось до `until` (миллисекунды, как у `Date.now()`): вверх до целых, прошло — 0. */
+export function remainingSeconds(until: number, now: number): number {
+  const seconds = Math.ceil((until - now) / 1000);
+  return seconds > 0 ? seconds : 0;
+}
+
 /** Сколько ещё живёт токен: «18 ч», «25 мин», «истёк». */
 export function fmtTimeLeft(expiresAt: number, nowSec: number): string {
   const left = expiresAt - nowSec;

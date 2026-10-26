@@ -63,6 +63,12 @@ export function splitCapacity(skin: Skin): number {
   return skin.records.reduce((n, r) => n + r.amount - 1, 0);
 }
 
+/** Число для «Отделить N»: целое от 1 до `capacity`. Дробное округляется, не число и меньше 1 — это 1. */
+export function clampCount(value: number, capacity: number): number {
+  const n = Math.round(value) || 1;
+  return Math.min(Math.max(1, capacity), Math.max(1, n));
+}
+
 /** Есть хотя бы две записи с одинаковыми classid и instanceid. */
 export function canCombine(skin: Skin): boolean {
   const seen = new Set<string>();
