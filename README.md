@@ -84,7 +84,7 @@ Installers appear in `src-tauri/target/release/bundle/`.
 
 For development, `npm run tauri dev` opens the app. `npm run dev` serves the window at http://localhost:1420 for a regular browser, with made-up data instead of Steam; it does not open the browser itself. Demo states: `?demo=main`, `?demo=item`, `?demo=plan`.
 
-Tests: `npm test`, then `npm run build` and `cargo test --manifest-path src-tauri/Cargo.toml` — the Rust tests need the built `dist/` folder.
+Tests: `npm test` and `cargo test --manifest-path src-tauri/Cargo.toml`.
 
 ## License
 

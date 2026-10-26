@@ -84,7 +84,7 @@ npm run tauri build
 
 Для разработки: `npm run tauri dev` открывает приложение. `npm run dev` запускает окно на http://localhost:1420 для обычного браузера, с выдуманными данными вместо Steam; сам браузер он не открывает. Демо-данные: `?demo=main`, `?demo=item`, `?demo=plan`.
 
-Тесты: `npm test`, затем `npm run build` и `cargo test --manifest-path src-tauri/Cargo.toml` — тестам Rust нужна собранная папка `dist/`.
+Тесты: `npm test` и `cargo test --manifest-path src-tauri/Cargo.toml`.
 
 ## Лицензия
 
