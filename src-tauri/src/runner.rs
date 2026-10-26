@@ -547,6 +547,26 @@ mod tests {
         assert!(r.slept.is_empty(), "no pause after stop: {:?}", r.slept);
     }
 
+    /// «Остановить» нажали во время паузы между запросами: следующий запрос уходить не должен.
+    #[tokio::test]
+    async fn stop_during_the_pause_between_requests_sends_no_request() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let api = FakeApi::new(vec![]);
+        let (sleep, slept) = stopping_sleep(&stop, 1);
+        let r = go_with(&api, &splits(3), &stop, &sleep, &slept).await;
+        assert_eq!(
+            r.outcome,
+            RunOutcome {
+                reason: StopReason::StoppedByUser,
+                done: 1,
+                errors: 0,
+                total: 3
+            }
+        );
+        assert_eq!(api.calls(), vec!["split 1000"]);
+        assert_eq!(r.slept, vec![Duration::from_millis(1500)]);
+    }
+
     #[tokio::test]
     async fn stop_during_rate_limit_wait_stops() {
         let stop = Arc::new(AtomicBool::new(false));
