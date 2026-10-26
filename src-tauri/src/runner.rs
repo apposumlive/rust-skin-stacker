@@ -2,7 +2,7 @@
 //! Останавливается после трёх неудач подряд, при 401/403 и по кнопке «Остановить».
 
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde::Serialize;
@@ -75,8 +75,16 @@ pub struct RunOutcome {
     pub total: u32,
 }
 
-pub struct RunConfig {
-    pub delay: Duration,
+pub struct RunConfig<'a> {
+    /// Пауза между запросами, мс. Читается перед каждой паузой:
+    /// новая пауза из настроек действует уже во время запуска.
+    pub delay_ms: &'a AtomicU64,
+}
+
+impl RunConfig<'_> {
+    fn delay(&self) -> Duration {
+        Duration::from_millis(self.delay_ms.load(Ordering::SeqCst))
+    }
 }
 
 enum Failure {
@@ -88,7 +96,7 @@ enum Failure {
 pub async fn run<A: StackApi>(
     api: &A,
     steps: &[Step],
-    config: &RunConfig,
+    config: &RunConfig<'_>,
     stop: &AtomicBool,
     sleep: &SleepFn,
     journal: &Journal,
@@ -105,7 +113,7 @@ pub async fn run<A: StackApi>(
     for (i, step) in steps.iter().enumerate() {
         // Пауза только между запросами и не после нажатия «Остановить».
         if i > 0 && !stop.load(Ordering::SeqCst) {
-            sleep(config.delay).await;
+            sleep(config.delay()).await;
         }
         if stop.load(Ordering::SeqCst) {
             journal.add("stopped by the user");
@@ -316,8 +324,9 @@ mod tests {
     ) -> Run {
         let journal = Journal::default();
         let mut events = Vec::new();
+        let delay_ms = AtomicU64::new(1500);
         let config = RunConfig {
-            delay: Duration::from_millis(1500),
+            delay_ms: &delay_ms,
         };
         let outcome = run(api, steps, &config, stop, sleep, &journal, |p| {
             events.push(p)
@@ -402,6 +411,36 @@ mod tests {
                 errors: 0,
                 key: String::new()
             })
+        );
+    }
+
+    /// Паузу поменяли во время второго запроса: первая пауза старая, вторая уже новая.
+    #[tokio::test]
+    async fn pause_changed_during_a_run_applies_to_the_next_pause() {
+        let api = FakeApi::new(vec![]);
+        let (sleep, slept) = recording_sleep();
+        let delay_ms = AtomicU64::new(1500);
+        let config = RunConfig {
+            delay_ms: &delay_ms,
+        };
+        let outcome = run(
+            &api,
+            &splits(3),
+            &config,
+            &AtomicBool::new(false),
+            &sleep,
+            &Journal::default(),
+            |p| {
+                if matches!(p, Progress::Request { done: 1, .. }) {
+                    delay_ms.store(4000, Ordering::SeqCst);
+                }
+            },
+        )
+        .await;
+        assert_eq!(outcome.done, 3);
+        assert_eq!(
+            *slept.lock().unwrap(),
+            vec![Duration::from_millis(1500), Duration::from_millis(4000)]
         );
     }
 
