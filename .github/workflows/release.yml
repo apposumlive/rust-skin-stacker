@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis,msi
+          - os: ubuntu-24.04
+            bundles: appimage,deb,rpm
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # tauri-action создаёт черновик релиза и загружает в него файлы
+      id-token: write # подтверждение происхождения
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Linux packages for Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Rust Skin Stacker ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: false
+          uploadUpdaterJson: false
+          args: --bundles ${{ matrix.bundles }}
+          releaseBody: |
+            Builds for Windows and Linux. Not affiliated with Valve or Facepunch.
+
+            **Check a file before you run it**
+            - Checksum: compare the file with `SHA256SUMS` — `sha256sum -c SHA256SUMS --ignore-missing` on Linux, `Get-FileHash <file>` on Windows.
+            - Provenance: `gh attestation verify <file> --repo ${{ github.repository }}`
+
+            Windows SmartScreen may warn about an unsigned app. The README explains what to do.
+
+      - name: Collect files for attestation
+        shell: bash
+        run: |
+          mkdir release-files
+          for f in src-tauri/target/release/bundle/*/*; do
+            case "$f" in
+              *.exe|*.msi|*.AppImage|*.deb|*.rpm) cp "$f" "release-files/$(basename "$f" | tr ' ' '.')" ;;
+            esac
+          done
+          ls -l release-files
+
+      - uses: actions/attest@v4
+        with:
+          subject-path: release-files/*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: files-${{ runner.os }}
+          path: release-files/*
+          if-no-files-found: error
+
+  checksums:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: files-*
+          merge-multiple: true
+          path: files
+
+      - name: SHA256SUMS
+        working-directory: files
+        run: |
+          sha256sum * > ../SHA256SUMS
+          cat ../SHA256SUMS
+
+      - uses: actions/attest@v4
+        with:
+          subject-path: SHA256SUMS
+
+      - name: Check names and upload SHA256SUMS to the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[].name' > assets.txt
+          for f in files/*; do
+            name="$(basename "$f")"
+            grep -qxF "$name" assets.txt || { echo "::error::$name is not among the release files"; exit 1; }
+          done
+          gh release upload "$TAG" SHA256SUMS --repo "$REPO" --clobber
