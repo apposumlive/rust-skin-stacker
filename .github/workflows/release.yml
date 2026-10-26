@@ -62,6 +62,7 @@ jobs:
             **Check a file before you run it**
             - Checksum: compare the file with `SHA256SUMS` — `sha256sum -c SHA256SUMS --ignore-missing` on Linux, `Get-FileHash <file>` on Windows.
             - Provenance: `gh attestation verify <file> --repo ${{ github.repository }}`
+              It needs the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`.
 
             Windows SmartScreen may warn about an unsigned app. The README explains what to do.
 
