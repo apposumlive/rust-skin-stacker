@@ -199,10 +199,14 @@ async fn read_json(resp: reqwest::Response) -> Result<Value, SteamError> {
     if !(200..300).contains(&status) {
         return Err(SteamError::Http(status));
     }
-    if let Some(code) = header_number::<i32>(&resp, "x-eresult")
-        && code != 1
-    {
-        return Err(SteamError::Rejected(code));
+    // Нет заголовка — это успех. Заголовок не число — ответу нельзя верить,
+    // и считать запрос выполненным нельзя.
+    if resp.headers().contains_key("x-eresult") {
+        match header_number::<i32>(&resp, "x-eresult") {
+            Some(1) => {}
+            Some(code) => return Err(SteamError::Rejected(code)),
+            None => return Err(SteamError::BadResponse),
+        }
     }
     let bytes = resp.bytes().await.map_err(|e| network(&e))?;
     if bytes.iter().all(u8::is_ascii_whitespace) {
@@ -485,6 +489,73 @@ mod tests {
             .await;
         let err = client.split(&test_token(), "1001", 1).await.unwrap_err();
         assert_eq!(err, SteamError::Rejected(8));
+    }
+
+    #[tokio::test]
+    async fn post_with_eresult_one_is_success() {
+        let (server, client, _) = setup().await;
+        Mock::given(method("POST"))
+            .and(path(SPLIT))
+            .respond_with(ResponseTemplate::new(200).insert_header("x-eresult", "1"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        client.split(&test_token(), "1001", 1).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn post_with_malformed_eresult_is_bad_response() {
+        let (server, client, _) = setup().await;
+        Mock::given(method("POST"))
+            .and(path(SPLIT))
+            .respond_with(ResponseTemplate::new(200).insert_header("x-eresult", "abc"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = client.split(&test_token(), "1001", 1).await.unwrap_err();
+        assert_eq!(err, SteamError::BadResponse);
+    }
+
+    /// Редирект на другой адрес: туда не должен уйти ни один запрос, в нём токен.
+    async fn mount_redirect(server: &MockServer, verb: &str, from: &str, status: u16) {
+        Mock::given(method(verb))
+            .and(path(from))
+            .respond_with(
+                ResponseTemplate::new(status)
+                    .insert_header("Location", format!("{}/elsewhere", server.uri())),
+            )
+            .expect(1)
+            .mount(server)
+            .await;
+        // Без проверки метода: цель не должна получить ни GET, ни POST.
+        Mock::given(path("/elsewhere"))
+            .respond_with(empty_page())
+            .expect(0)
+            .mount(server)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn get_does_not_follow_redirects() {
+        let (server, client, slept) = setup().await;
+        mount_redirect(&server, "GET", INV, 302).await;
+        let err = client
+            .inventory_page(&test_token(), None, "english")
+            .await
+            .unwrap_err();
+        assert_eq!(err, SteamError::Http(302));
+        assert!(secs(&slept).is_empty());
+        server.verify().await;
+    }
+
+    #[tokio::test]
+    async fn post_does_not_follow_redirects() {
+        let (server, client, slept) = setup().await;
+        mount_redirect(&server, "POST", SPLIT, 307).await;
+        let err = client.split(&test_token(), "1001", 1).await.unwrap_err();
+        assert_eq!(err, SteamError::Http(307));
+        assert!(secs(&slept).is_empty());
+        server.verify().await;
     }
 
     #[tokio::test]
