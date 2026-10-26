@@ -1,0 +1,11 @@
+# Сборка
+src-tauri/target/
+node_modules/
+dist/
+
+# Рабочие файлы инструмента дизайна (impeccable)
+.impeccable/build/
+.impeccable/questions/
+.impeccable/review/
+.impeccable/mocks/
+.impeccable/config.local.json
