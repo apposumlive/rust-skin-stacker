@@ -1,0 +1,4 @@
+# Сборка
+src-tauri/target/
+node_modules/
+dist/
