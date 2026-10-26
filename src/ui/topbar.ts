@@ -7,6 +7,11 @@ import { getLang, t } from '../i18n';
 import { getState, setState, type State } from '../store';
 import type { Part } from './shell';
 
+/** Кнопка меню — «хозяин» панели настроек: сюда возвращается фокус, когда запомненного места нет. */
+export function focusMenuButton(): void {
+  document.querySelector<HTMLElement>('.menu-wrap .icon-btn')?.focus();
+}
+
 export function createTopbar(el: HTMLElement): Part {
   const split = h(
     'button',
@@ -40,7 +45,15 @@ export function createTopbar(el: HTMLElement): Part {
     { class: 'menu', role: 'menu', hidden: true },
     h(
       'button',
-      { type: 'button', role: 'menuitem', onclick: () => setState({ menuOpen: false, settingsOpen: true }) },
+      {
+        type: 'button',
+        role: 'menuitem',
+        onclick: () => {
+          // Меню скроется раньше, чем панель запомнит фокус: пусть он будет на кнопке меню, а не на скрытом пункте.
+          menuButton.focus();
+          setState({ menuOpen: false, settingsOpen: true });
+        },
+      },
       icon('settings'),
       t('menu.settings'),
     ),
