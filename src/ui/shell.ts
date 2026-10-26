@@ -7,6 +7,7 @@ import { createFilters } from './filters';
 import { createGrid } from './grid';
 import type { Screen } from './login';
 import { createPanel } from './panel';
+import { createSettings } from './settings';
 import { createTopbar } from './topbar';
 
 export interface Part {
@@ -19,8 +20,9 @@ export function mountMain(): Screen {
   const filters = h('aside', { class: 'filters' });
   const content = h('section', { class: 'content' });
   const side = h('aside', { class: 'side' });
-  const el = h('div', { class: 'app' }, top, h('div', { class: 'wrap' }, filters, content, side));
-  const parts: Part[] = [createTopbar(top), createFilters(filters), createGrid(content), createPanel(side)];
+  const overlay = h('div', { class: 'overlay' });
+  const el = h('div', { class: 'app' }, top, h('div', { class: 'wrap' }, filters, content, side), overlay);
+  const parts: Part[] = [createTopbar(top), createFilters(filters), createGrid(content), createPanel(side), createSettings(overlay)];
   const update = (state: State) => {
     for (const part of parts) part.update(state);
   };

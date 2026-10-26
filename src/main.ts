@@ -8,6 +8,7 @@ import './styles/base.css';
 import './styles/login.css';
 import './styles/main.css';
 import './styles/panel.css';
+import './styles/overlay.css';
 
 import { loadInventory, selectSkin, setFilter, showPlan } from './actions';
 import { api, inTauri, useApi } from './api';
