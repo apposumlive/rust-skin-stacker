@@ -1,11 +1,11 @@
 // Экран входа: как получить токен, поле вставки с проверкой на лету, почему это безопасно.
 
 import { switchLang } from '../actions';
-import { api, asUiError } from '../api';
+import { TOKEN_PAGE, api, asUiError } from '../api';
 import { h, icon } from '../dom';
 import { fmtTimeLeft } from '../format';
 import { errorText, getLang, t } from '../i18n';
-import { setState } from '../store';
+import { getState, setState } from '../store';
 import type { TokenInfo } from '../types';
 
 export interface Screen {
@@ -27,6 +27,27 @@ export function renderLogin(): Screen {
   let info: TokenInfo | null = null;
   let timer = 0;
   let seq = 0;
+
+  // Сообщение в строке состояния: `bad` — красным.
+  const say = (text: string, kind: 'ok' | 'bad' | '' = '') => {
+    status.className = kind ? `login-status ${kind}` : 'login-status';
+    status.textContent = text;
+  };
+  // Ошибка, оставшаяся с прошлого экрана (например, «Забыть токен» не дошёл до ядра).
+  const pending = getState().error;
+  if (pending) say(errorText(pending), 'bad');
+
+  const switchLanguage = async () => {
+    const error = await switchLang(getLang() === 'ru' ? 'en' : 'ru');
+    if (error) say(errorText(error), 'bad');
+  };
+  const openTokenPage = async () => {
+    try {
+      await api.openTokenPage();
+    } catch {
+      say(t('login.openFailed', { url: TOKEN_PAGE }), 'bad');
+    }
+  };
 
   // Каждая вставка проверяется в ядре; ответ на устаревший ввод отбрасывается.
   const check = async () => {
@@ -77,14 +98,14 @@ export function renderLogin(): Screen {
         h('div', { class: 'brand' }, h('span', { class: 'logo' }, icon('stack-2')), t('app.name')),
         h(
           'button',
-          { class: 'lang', type: 'button', 'aria-label': t('top.lang'), onclick: () => void switchLang(lang === 'ru' ? 'en' : 'ru') },
+          { class: 'lang', type: 'button', 'aria-label': t('top.lang'), onclick: () => void switchLanguage() },
           lang.toUpperCase(),
         ),
       ),
       h('h1', { class: 'login-title' }, t('login.title')),
       h('p', { class: 'muted' }, t('login.lead')),
       h('ol', { class: 'steps' }, h('li', {}, t('login.step1')), h('li', {}, t('login.step2')), h('li', {}, t('login.step3'))),
-      h('button', { class: 'btn sec', type: 'button', onclick: () => void api.openTokenPage() }, icon('external-link'), t('login.open')),
+      h('button', { class: 'btn sec', type: 'button', onclick: () => void openTokenPage() }, icon('external-link'), t('login.open')),
       field,
       status,
       next,
