@@ -2,7 +2,7 @@
 
 import { api, asUiError } from './api';
 import { detectLang, setLang, type Lang } from './i18n';
-import { nextSelection, type Filter, type SelectMode } from './model';
+import { categoriesOf, nextSelection, type Filter, type SelectMode } from './model';
 import { getState, setState, type Panel } from './store';
 import type { Operation, Plan, Progress, Settings, UiError } from './types';
 
@@ -24,11 +24,16 @@ export async function loadInventory(): Promise<void> {
     const inventory = await api.loadInventory(getState().lang);
     if (mine !== session) return;
     const keys = new Set(inventory.skins.map((s) => s.key));
+    const known = new Set(categoriesOf(inventory).map((c) => c.id));
     const s = getState();
+    // Отметка типа, которого в новом инвентаре нет, снять нечем: флажка для неё не нарисовано, а сетка пуста.
+    const categories = s.filter.categories.filter((id) => known.has(id));
     setState({
       inventory,
       loading: false,
       selected: s.selected.filter((k) => keys.has(k)),
+      // Без лишних отметок объект фильтра остаётся прежним: сетка не пересоздаётся и не прокручивается в начало.
+      filter: categories.length === s.filter.categories.length ? s.filter : { ...s.filter, categories },
       panel: s.panel.kind === 'running' ? s.panel : { kind: 'selection' },
     });
   } catch (e) {

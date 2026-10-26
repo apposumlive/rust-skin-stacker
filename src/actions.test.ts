@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { forgetToken, loadInventory, runPlan, saveSettings, showPlan, stopRun, switchLang } from './actions';
 import { useApi, type Api } from './api';
 import { setLang } from './i18n';
+import { visibleSkins } from './model';
 import { getState, initState, initialFilter, setState, type Panel, type State } from './store';
 import type { Inventory, InvRecord, Plan, Progress, RunOutcome, Settings, Skin, StartResult } from './types';
 
@@ -14,6 +15,12 @@ function skin(key: string, amount = 3): Skin {
 }
 
 const inv = (...keys: string[]): Inventory => ({ skins: keys.map((k) => skin(k)), unreadable: [] });
+
+/** Инвентарь из пар «предмет — тип»: у каждого предмета тип с этим id. */
+const invIn = (...pairs: Array<[key: string, category: string]>): Inventory => ({
+  skins: pairs.map(([key, id]) => ({ ...skin(key), category: { id, label: id } })),
+  unreadable: [],
+});
 
 const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] };
 const newPlan: Plan = { ...plan, requests: 2 };
@@ -430,6 +437,57 @@ describe('loadInventory', () => {
     expect(s.selected).toEqual(['A']);
     expect(s.loading).toBe(false);
     expect(s.panel).toEqual({ kind: 'selection' });
+  });
+
+  describe('type filter', () => {
+    it('drops the checked types that are no longer in the inventory and keeps the rest of the filter', async () => {
+      setState({ filter: { search: 'a', show: 'stacks', categories: ['Tool', 'Weapon'], sort: 'name' } });
+      useApi(fakeApi({ loadInventory: async () => invIn(['A', 'Weapon'], ['B', 'Outfit']) }));
+      await loadInventory();
+      expect(getState().filter).toEqual({ search: 'a', show: 'stacks', categories: ['Weapon'], sort: 'name' });
+    });
+
+    it('does not leave an empty grid behind a checkbox nobody can clear after switching accounts', async () => {
+      setState({ inventory: invIn(['A', 'Tool']), filter: { ...initialFilter, categories: ['Tool'] } });
+      await forgetToken();
+      setState({ screen: 'main' });
+      const other = invIn(['B', 'Weapon'], ['C', 'Outfit']);
+      useApi(fakeApi({ loadInventory: async () => other }));
+      await loadInventory();
+      const s = getState();
+      expect(s.filter.categories).toEqual([]);
+      expect(visibleSkins(other, s.filter).map((k) => k.key)).toEqual(['B', 'C']);
+    });
+
+    it('clears the types when the inventory has none at all', async () => {
+      setState({ filter: { ...initialFilter, categories: ['Tool'] } });
+      useApi(fakeApi({ loadInventory: async () => inv('A') }));
+      await loadInventory();
+      expect(getState().filter.categories).toEqual([]);
+    });
+
+    it('keeps the same filter object when every checked type is still there', async () => {
+      const filter = { ...initialFilter, categories: ['Weapon'] };
+      setState({ filter });
+      useApi(fakeApi({ loadInventory: async () => invIn(['A', 'Weapon'], ['B', 'Outfit']) }));
+      await loadInventory();
+      expect(getState().filter).toBe(filter);
+    });
+
+    it('keeps the same filter object when no type is checked', async () => {
+      const filter = getState().filter;
+      useApi(fakeApi({ loadInventory: async () => invIn(['A', 'Weapon']) }));
+      await loadInventory();
+      expect(getState().filter).toBe(filter);
+    });
+
+    it('leaves the filter alone when the read fails', async () => {
+      const filter = { ...initialFilter, categories: ['Tool'] };
+      setState({ filter });
+      useApi(fakeApi({ loadInventory: () => Promise.reject({ code: 'http', status: 502 }) }));
+      await loadInventory();
+      expect(getState().filter).toBe(filter);
+    });
   });
 
   it('puts the selection panel back after a reload', async () => {
