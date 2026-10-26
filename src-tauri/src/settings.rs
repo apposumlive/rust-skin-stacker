@@ -1,0 +1,142 @@
+//! Настройки: язык и пауза между запросами. Файл лежит в папке настроек системы.
+
+use std::fs;
+use std::io;
+use std::path::Path;
+
+use serde::{Deserialize, Serialize};
+
+pub const DEFAULT_DELAY_MS: u32 = 1500;
+pub const MIN_DELAY_MS: u32 = 500;
+pub const MAX_DELAY_MS: u32 = 10_000;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Settings {
+    /// "en", "ru" или None — язык системы.
+    pub language: Option<String>,
+    pub delay_ms: u32,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            language: None,
+            delay_ms: DEFAULT_DELAY_MS,
+        }
+    }
+}
+
+impl Settings {
+    /// Пауза в допустимых границах, неизвестный язык — как в системе.
+    pub fn normalized(mut self) -> Self {
+        self.delay_ms = self.delay_ms.clamp(MIN_DELAY_MS, MAX_DELAY_MS);
+        if !matches!(self.language.as_deref(), Some("en" | "ru")) {
+            self.language = None;
+        }
+        self
+    }
+}
+
+/// Нет файла или он испорчен — настройки по умолчанию.
+pub fn load(path: &Path) -> Settings {
+    fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Settings>(&bytes).ok())
+        .unwrap_or_default()
+        .normalized()
+}
+
+pub fn save(path: &Path, settings: &Settings) -> io::Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    let json = serde_json::to_vec_pretty(settings).map_err(io::Error::other)?;
+    fs::write(path, json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn temp_file(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("rss-settings-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        dir.join("settings.json")
+    }
+
+    #[test]
+    fn missing_file_gives_defaults() {
+        assert_eq!(load(&temp_file("missing")), Settings::default());
+    }
+
+    #[test]
+    fn broken_file_gives_defaults() {
+        let path = temp_file("broken");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, b"{not json").unwrap();
+        assert_eq!(load(&path), Settings::default());
+    }
+
+    #[test]
+    fn partial_file_keeps_known_fields() {
+        let path = temp_file("partial");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, br#"{"delayMs": 3000}"#).unwrap();
+        assert_eq!(
+            load(&path),
+            Settings {
+                language: None,
+                delay_ms: 3000
+            }
+        );
+    }
+
+    #[test]
+    fn normalized_clamps_delay_and_language() {
+        let s = Settings {
+            language: Some("de".into()),
+            delay_ms: 100,
+        }
+        .normalized();
+        assert_eq!(
+            s,
+            Settings {
+                language: None,
+                delay_ms: MIN_DELAY_MS
+            }
+        );
+        let s = Settings {
+            language: Some("ru".into()),
+            delay_ms: 60_000,
+        }
+        .normalized();
+        assert_eq!(
+            s,
+            Settings {
+                language: Some("ru".into()),
+                delay_ms: MAX_DELAY_MS
+            }
+        );
+    }
+
+    #[test]
+    fn save_then_load_round_trips() {
+        let path = temp_file("roundtrip");
+        let s = Settings {
+            language: Some("en".into()),
+            delay_ms: 2500,
+        };
+        save(&path, &s).unwrap();
+        assert_eq!(load(&path), s);
+    }
+
+    #[test]
+    fn json_uses_camel_case() {
+        assert_eq!(
+            serde_json::to_string(&Settings::default()).unwrap(),
+            r#"{"language":null,"delayMs":1500}"#
+        );
+    }
+}
