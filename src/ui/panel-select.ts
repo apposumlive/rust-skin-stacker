@@ -2,7 +2,7 @@
 
 import { clearSelection, showPlan } from '../actions';
 import { api, asUiError } from '../api';
-import { h, icon } from '../dom';
+import { h, icon, type Child } from '../dom';
 import { estimateSeconds, fmtDate, fmtDuration, fmtInt, iconUrl } from '../format';
 import { errorText, t, tn } from '../i18n';
 import { apartRecords, canCombine, clampCount, counts, hasStack, layoutOf, layoutText, splitCapacity } from '../model';
@@ -13,13 +13,29 @@ export function picture(skin: Skin | undefined, size: number, cls: string): HTML
   return h('div', { class: cls }, skin?.icon ? h('img', { src: iconUrl(skin.icon, size), alt: '' }) : icon('photo-off'));
 }
 
-export function hintView(inventory: Inventory): HTMLElement {
-  const allSingle = counts(inventory).stacks === 0;
+/**
+ * Вид правой панели: содержимое прокручивается, кнопки закреплены снизу и видны при любой высоте окна.
+ * Главный элемент вида помечен `data-main`: на него панель переводит фокус после смены вида.
+ */
+export function panelView(cls: string, body: Child[], dock: Child[] = []): HTMLElement {
   return h(
     'div',
-    { class: 'panel hint' },
+    { class: `panel ${cls}` },
+    h('div', { class: 'pbody' }, ...body),
+    dock.some(Boolean) ? h('div', { class: 'dock' }, ...dock) : null,
+  );
+}
+
+/** Заголовок, на который фокус переводится программно (Tab на нём не останавливается). */
+export function mainHeading(cls: string, text: string): HTMLElement {
+  return h('h2', { class: cls, tabindex: -1, 'data-main': true }, text);
+}
+
+export function hintView(inventory: Inventory): HTMLElement {
+  const allSingle = counts(inventory).stacks === 0;
+  return panelView('hint', [
     h('div', { class: 'hint-icon' }, icon('hand-click')),
-    h('h2', { class: 'plan-h' }, t('panel.hintTitle')),
+    mainHeading('plan-h', t('panel.hintTitle')),
     h('p', { class: 'muted' }, t('panel.hintClick')),
     h('p', { class: 'muted' }, t('panel.hintKeys')),
     h(
@@ -29,7 +45,7 @@ export function hintView(inventory: Inventory): HTMLElement {
       h('p', {}, icon('stack-push'), t('panel.hintCombineAll')),
     ),
     allSingle ? h('p', { class: 'note ok' }, icon('circle-check'), t('panel.allSingle')) : null,
-  );
+  ]);
 }
 
 function yesNo(flag: boolean, availableAfter: string | null): HTMLElement {
@@ -84,8 +100,8 @@ function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTM
     more.disabled = count >= capacity;
   }
 
-  function say(text: string, failed: boolean): void {
-    preview.textContent = text;
+  function say(parts: Array<Node | string>, failed: boolean): void {
+    preview.replaceChildren(...parts);
     preview.classList.toggle('err', failed);
   }
 
@@ -97,18 +113,21 @@ function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTM
         const after = plan.after[0];
         // Строка уже пуста: set() убрал её при смене числа. Пустой ответ ничего к ней не добавляет.
         if (mine !== seq || !after) return;
+        // «Станет:» и стоимость приглушены, раскладка выделена — как на макете.
         say(
-          t('item.result', {
-            layout: layoutText(after.stacks, after.singles, true),
-            requests: tn('plan.requests', plan.requests),
-            time: fmtDuration(estimateSeconds(plan.requests, delayMs)),
-          }),
+          [
+            t('item.becomes'),
+            ' ',
+            h('b', {}, layoutText(after.stacks, after.singles, true)),
+            ' · ',
+            t('item.cost', { requests: tn('plan.requests', plan.requests), time: fmtDuration(estimateSeconds(plan.requests, delayMs)) }),
+          ],
           false,
         );
       },
       (e: unknown) => {
         if (mine !== seq) return;
-        say(errorText(asUiError(e)), true);
+        say([errorText(asUiError(e))], true);
       },
     );
   }
@@ -120,7 +139,7 @@ function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTM
     if (count === was) return;
     // Строка от прошлого числа к новому не относится: убираем её и считаем заново, когда движение кончится.
     seq += 1;
-    say('', false);
+    say([], false);
     window.clearTimeout(timer);
     timer = window.setTimeout(() => {
       // Панель могла пересобраться, пока ждали: тогда этот блок уже не на экране.
@@ -161,23 +180,26 @@ export function itemView(skin: Skin, state: State): HTMLElement {
     icon('stack-push'),
     t('item.combine'),
   );
-  return h(
-    'div',
-    { class: 'panel item' },
-    picture(skin, 256, 'big'),
-    h('h2', { class: 'iname' }, skin.name),
-    h('p', { class: 'isub num' }, `${t('card.total', { count: fmtInt(skin.total) })} · ${layoutText(layout.stacks, layout.singles, true)}`),
-    h(
-      'dl',
-      { class: 'kv' },
-      fact(t('item.marketable'), yesNo(main?.marketable ?? false, main?.availableAfter ?? null)),
-      fact(t('item.tradable'), yesNo(main?.tradable ?? false, main?.availableAfter ?? null)),
-      fact(t('item.records'), h('b', { class: 'num' }, fmtInt(skin.records.length))),
-    ),
-    apart ? h('p', { class: 'note' }, icon('alert-triangle'), tn('item.apart', apart)) : null,
-    split ? split.section : h('p', { class: 'note muted' }, icon('circle-check'), t('item.nothingToSplit')),
-    split ? h('div', { class: 'acts' }, split.button, combine) : h('div', { class: 'acts one' }, combine),
-    h('p', { class: 'foot' }, t('item.foot')),
+  return panelView(
+    'item',
+    [
+      picture(skin, 256, 'big'),
+      mainHeading('iname', skin.name),
+      h('p', { class: 'isub num' }, `${t('card.total', { count: fmtInt(skin.total) })} · ${layoutText(layout.stacks, layout.singles, true)}`),
+      h(
+        'dl',
+        { class: 'kv' },
+        fact(t('item.marketable'), yesNo(main?.marketable ?? false, main?.availableAfter ?? null)),
+        fact(t('item.tradable'), yesNo(main?.tradable ?? false, main?.availableAfter ?? null)),
+        fact(t('item.records'), h('b', { class: 'num' }, fmtInt(skin.records.length))),
+      ),
+      apart ? h('p', { class: 'note' }, icon('alert-triangle'), tn('item.apart', apart)) : null,
+      split ? split.section : h('p', { class: 'note muted' }, icon('circle-check'), t('item.nothingToSplit')),
+    ],
+    [
+      split ? h('div', { class: 'acts' }, split.button, combine) : h('div', { class: 'acts one' }, combine),
+      h('p', { class: 'foot' }, t('item.foot')),
+    ],
   );
 }
 
@@ -185,33 +207,36 @@ export function multiView(skins: Skin[]): HTMLElement {
   const pcs = skins.reduce((n, s) => n + s.total, 0);
   const keys = skins.map((s) => s.key);
   const shown = skins.slice(0, 8);
-  return h(
-    'div',
-    { class: 'panel multi' },
-    h(
-      'div',
-      { class: 'thumbs' },
-      ...shown.map((s) => h('div', { class: 'thumb', title: s.name }, s.icon ? h('img', { src: iconUrl(s.icon, 96), alt: '' }) : icon('photo-off'))),
-      skins.length > shown.length ? h('div', { class: 'thumb' }, t('multi.more', { count: fmtInt(skins.length - shown.length) })) : null,
-    ),
-    h('h2', { class: 'plan-h' }, t('multi.title', { items: tn('multi.items', skins.length), pcs: t('card.total', { count: fmtInt(pcs) }) })),
-    h(
-      'div',
-      { class: 'acts one' },
+  return panelView(
+    'multi',
+    [
       h(
-        'button',
-        { class: 'btn pri', type: 'button', disabled: !skins.some(hasStack), onclick: () => void showPlan({ kind: 'splitSelected', keys }) },
-        icon('arrows-split-2'),
-        t('multi.split'),
+        'div',
+        { class: 'thumbs' },
+        ...shown.map((s) => h('div', { class: 'thumb', title: s.name }, s.icon ? h('img', { src: iconUrl(s.icon, 96), alt: '' }) : icon('photo-off'))),
+        skins.length > shown.length ? h('div', { class: 'thumb' }, t('multi.more', { count: fmtInt(skins.length - shown.length) })) : null,
       ),
+      mainHeading('plan-h', t('multi.title', { items: tn('multi.items', skins.length), pcs: t('card.total', { count: fmtInt(pcs) }) })),
+      h('button', { class: 'link', type: 'button', onclick: clearSelection }, t('multi.clear')),
+    ],
+    [
       h(
-        'button',
-        { class: 'btn sec', type: 'button', disabled: !skins.some(canCombine), onclick: () => void showPlan({ kind: 'combineSelected', keys }) },
-        icon('stack-push'),
-        t('multi.combine'),
+        'div',
+        { class: 'acts one' },
+        h(
+          'button',
+          { class: 'btn pri', type: 'button', disabled: !skins.some(hasStack), onclick: () => void showPlan({ kind: 'splitSelected', keys }) },
+          icon('arrows-split-2'),
+          t('multi.split'),
+        ),
+        h(
+          'button',
+          { class: 'btn sec', type: 'button', disabled: !skins.some(canCombine), onclick: () => void showPlan({ kind: 'combineSelected', keys }) },
+          icon('stack-push'),
+          t('multi.combine'),
+        ),
       ),
-    ),
-    h('button', { class: 'link', type: 'button', onclick: clearSelection }, t('multi.clear')),
-    h('p', { class: 'foot' }, t('item.foot')),
+      h('p', { class: 'foot' }, t('item.foot')),
+    ],
   );
 }

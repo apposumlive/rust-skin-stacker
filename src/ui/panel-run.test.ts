@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fmtDuration } from '../format';
 import { setLang, t } from '../i18n';
 import type { Panel, State } from '../store';
 import type { Inventory, InvRecord, Plan, Skin } from '../types';
-import { byClass, byTag, FakeEl, fakeDocument } from './fake-dom';
-import { patchRunning, planView, runningView } from './panel-run';
+import { byClass, byTag, FakeEl, fakeDocument, findAll } from './fake-dom';
+import { patchRunning, planView, resultView, runningView } from './panel-run';
 
 const NOW = 1_700_000_000_000;
 
@@ -19,6 +20,13 @@ const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, qu
 const empty: Plan = { ...plan, requests: 0, stacks: 0, queue: [] };
 
 type Running = Extract<Panel, { kind: 'running' }>;
+type Result = Extract<Panel, { kind: 'result' }>;
+
+/** Главный элемент вида: на него панель переводит фокус после смены вида. */
+const mains = (root: unknown) => findAll(root, (el) => el.attrs.has('data-main'));
+/** Кнопки в закреплённом снизу блоке. */
+const docked = (root: unknown) => byClass(root, 'dock').flatMap((dock) => byTag(dock, 'button'));
+const texts = (els: FakeEl[]) => els.map((el) => el.textContent);
 
 function running(patch: Partial<Running> = {}): Running {
   return { kind: 'running', plan, done: 0, total: 4, errors: 0, key: '', waitUntil: null, stopping: false, ...patch };
@@ -142,5 +150,124 @@ describe('plan view', () => {
     const plain = planView(empty, false, state);
     expect(plain.textContent).not.toContain(t('plan.changed'));
     expect(plain.textContent).toContain(t('plan.nothingSplit'));
+  });
+});
+
+describe('main element and docked buttons', () => {
+  it('focuses Run in the plan and keeps Run and Cancel docked below the scrolling list', () => {
+    const view = planView(plan, false, state);
+    expect(texts(mains(view))).toEqual([t('plan.run')]);
+    expect(texts(docked(view))).toEqual([t('plan.run'), t('plan.cancel')]);
+    expect(byClass(byClass(view, 'pbody')[0], 'queue')).toHaveLength(1);
+  });
+
+  it('focuses Close in a plan with nothing to do', () => {
+    expect(texts(mains(planView(empty, false, state)))).toEqual([t('plan.close')]);
+  });
+
+  it('focuses Stop while the run goes and names the progress bar like the heading', () => {
+    const view = runningView(running(), state, vi.fn());
+    expect(texts(mains(view))).toEqual([t('run.stop')]);
+    expect(texts(docked(view))).toEqual([t('run.stop')]);
+    const heading = t('run.title', { op: t('op.splitAll') });
+    expect(byClass(view, 'progress')[0].getAttribute('aria-label')).toBe(heading);
+  });
+
+  it('focuses the heading of the result, which Tab skips', () => {
+    const heading = mains(resultView(result()));
+    expect(heading).toHaveLength(1);
+    expect(heading[0].tag).toBe('h2');
+    expect(heading[0].getAttribute('tabindex')).toBe('-1');
+  });
+});
+
+describe('plan time', () => {
+  it('does not say «about» twice', () => {
+    for (const lang of ['en', 'ru'] as const) {
+      setLang(lang);
+      const label = t('plan.time');
+      const value = fmtDuration(180);
+      expect(value.startsWith('~')).toBe(true);
+      expect(label).not.toMatch(/about|примерно/);
+    }
+  });
+});
+
+function result(over: Partial<Result> = {}): Result {
+  return {
+    kind: 'result',
+    plan,
+    outcome: { reason: 'finished', done: 72, errors: 0, total: 72 },
+    reconciliation: { before: 121, after: 121, mismatches: [] },
+    stacks: 0,
+    ...over,
+  };
+}
+
+describe('result view', () => {
+  const buttons = (view: unknown) => byTag(view, 'button');
+  const primary = (view: unknown) => texts(buttons(view).filter((b) => b.classes.has('pri')));
+
+  it('puts the buttons in one column and makes Close the main one when the count was checked', () => {
+    const view = resultView(result());
+    expect(byClass(view, 'acts')[0].classes.has('one')).toBe(true);
+    expect(texts(docked(view))).toEqual([t('result.close'), t('result.reload'), t('result.copyLog')]);
+    expect(primary(view)).toEqual([t('result.close')]);
+  });
+
+  it('makes Re-read the main button only when there is no check', () => {
+    const view = resultView(result({ reconciliation: null, stacks: null }));
+    expect(texts(docked(view))).toEqual([t('result.reload'), t('result.copyLog'), t('result.close')]);
+    expect(primary(view)).toEqual([t('result.reload')]);
+    expect(view.textContent).toContain(t('result.checkUnavailable'));
+  });
+
+  it('asks for a new token when Steam rejected the token', () => {
+    const view = resultView(result({ outcome: { reason: 'tokenRejected', done: 3, errors: 0, total: 72 }, reconciliation: null, stacks: null }));
+    expect(texts(docked(view))).toEqual([t('result.newToken'), t('result.copyLog'), t('result.close')]);
+    expect(primary(view)).toEqual([t('result.newToken')]);
+    expect(view.textContent).toContain(t('result.checkTokenRejected'));
+    expect(view.textContent).not.toContain(t('result.checkUnavailable'));
+    expect(view.textContent).not.toContain(t('result.reload'));
+  });
+
+  it('shows the facts it knows: requests, errors, pieces and stacks now', () => {
+    const view = resultView(result({ outcome: { reason: 'stoppedByUser', done: 14, errors: 2, total: 72 }, stacks: 5 }));
+    const facts = byClass(view, 'fact').map((f) => f.textContent);
+    expect(facts).toEqual([
+      t('result.requests') + t('result.requestsValue', { done: '14', total: '72' }),
+      t('result.errors') + '2',
+      t('result.pieces') + t('result.piecesValue', { before: '121', after: '121' }),
+      t('result.stacksNow') + '5',
+    ]);
+  });
+
+  it('leaves out the facts it does not know', () => {
+    const view = resultView(result({ reconciliation: null, stacks: null }));
+    const facts = byClass(view, 'fact').map((f) => f.textContent);
+    expect(facts).toHaveLength(2);
+    expect(view.textContent).not.toContain(t('result.pieces'));
+    expect(view.textContent).not.toContain(t('result.stacksNow'));
+  });
+
+  it('says the count matches only when the sums are equal and no skin differs', () => {
+    expect(resultView(result()).textContent).toContain(t('result.checkOk'));
+    const swapped = resultView(
+      result({
+        reconciliation: {
+          before: 9,
+          after: 9,
+          mismatches: [
+            { key: 'A', name: 'Skin A', before: 4, after: 5 },
+            { key: 'B', name: 'Skin B', before: 5, after: 4 },
+          ],
+        },
+      }),
+    );
+    expect(swapped.textContent).toContain(t('result.checkBad'));
+    expect(swapped.textContent).not.toContain(t('result.checkOk'));
+    expect(swapped.textContent).toContain(t('result.mismatch', { name: 'Skin A', before: '4', after: '5' }));
+    const lost = resultView(result({ reconciliation: { before: 9, after: 8, mismatches: [] } }));
+    expect(lost.textContent).toContain(t('result.checkBad'));
   });
 });

@@ -4,7 +4,7 @@
 import { h } from '../dom';
 import type { State } from '../store';
 import type { Skin } from '../types';
-import { entering, panelStep, shownOf, type Shown } from './panel-diff';
+import { entering, focusPlace, panelStep, shownOf, takesFocus, type Shown } from './panel-diff';
 import { patchRunning, planView, resultView, runningView } from './panel-run';
 import { hintView, itemView, multiView } from './panel-select';
 import type { Part } from './shell';
@@ -52,9 +52,12 @@ export function createPanel(el: HTMLElement): Part {
       // Ход правится на месте: «Остановить» остаётся тем же узлом и не теряет фокус и клик.
       const current = el.firstElementChild;
       if (step === 'patch' && state.panel.kind === 'running' && current instanceof HTMLElement && patchRunning(current, state.panel, state, tick)) return;
+      const place = focusPlace(document.activeElement, el, document.body);
       const fresh = view(state, tick);
       if (enter) fresh.classList.add('enter');
       el.replaceChildren(fresh);
+      // Главный элемент нового вида: «Запустить» в плане, «Остановить» в ходе, заголовок в остальных.
+      if (takesFocus(place) && el.isConnected) fresh.querySelector<HTMLElement>('[data-main]')?.focus({ preventScroll: true });
     },
     destroy: stopTimer,
   };

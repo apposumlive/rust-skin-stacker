@@ -140,7 +140,7 @@ export function createSettings(host: HTMLElement): Part {
       ),
       error,
       h('div', { class: 'grow' }),
-      h('p', { class: 'muted small' }, t('settings.about')),
+      h('p', { class: 'muted small' }, t('settings.about'), ' ', h('span', { class: 'num' }, t('settings.version', { version: __APP_VERSION__ }))),
       h('div', { class: 'acts' }, saveButton, h('button', { class: 'btn sec', type: 'button', onclick: close }, t('settings.close'))),
     );
     host.replaceChildren(h('div', { class: 'backdrop', onclick: close }), drawer);

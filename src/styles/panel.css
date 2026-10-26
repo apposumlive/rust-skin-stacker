@@ -1,8 +1,16 @@
-.panel { display: flex; flex-direction: column; min-height: 100%; }
+/* Вид панели — колонка высотой с панель: прокручивается содержимое (.pbody), кнопки (.dock) закреплены снизу. */
+.panel { flex: 1; height: 100%; min-height: 0; display: flex; flex-direction: column; }
+/* Поля по 6 px сбоку и 4 px сверху — место для кольца фокуса, которое иначе обрезала бы прокрутка. */
+.pbody { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; margin: -4px -6px 0; padding: 4px 6px; }
+.dock { flex: none; display: grid; gap: 8px; padding-top: 14px; }
+.dock .acts { margin-top: 0; }
+.dock .foot { margin-top: 0; padding-top: 2px; }
 /* Появление только когда на месте стал другой вид: обновление хода и выбора в нём не мигает. */
 .panel.enter { animation: rise 0.2s var(--ease); }
+/* Заголовок получает фокус программно (после смены вида): кольцо на нём не нужно. */
+.panel h2[tabindex='-1']:focus { outline: none; }
 .wide { width: 100%; }
-.foot { margin-top: auto; padding-top: 14px; font-size: 12px; color: var(--text-3); line-height: 1.5; }
+.foot { margin-top: auto; padding-top: 14px; font-size: 12px; color: var(--text-2); line-height: 1.5; }
 .note { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; color: var(--warn); }
 .note .ti { font-size: 16px; flex: none; margin-top: 1px; }
 .note.ok { color: var(--ok); }
@@ -14,6 +22,11 @@
 .big { height: 196px; flex: none; border-radius: 12px; background: var(--img); display: grid; place-items: center; }
 .big img { width: 176px; height: 176px; object-fit: contain; }
 .big .ti, .thumb .ti { color: var(--text-3); font-size: 32px; }
+/* Низкое окно (от 640 px): картинка меньше, чтобы кнопки и блок «Отделить по одному» помещались без прокрутки. */
+@media (max-height: 700px) {
+  .big { height: 120px; }
+  .big img { width: 104px; height: 104px; }
+}
 .iname { margin: 14px 0 4px; font-size: 20px; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
 .kv { margin-top: 12px; display: grid; gap: 6px; font-size: 13px; }
 .kv div { display: flex; justify-content: space-between; gap: 12px; color: var(--text-2); }
@@ -22,7 +35,7 @@
 .kv .no { color: var(--text-2); }
 .kv .later { color: var(--warn); }
 .sec:not(.btn) { margin-top: 14px; background: var(--card); border-radius: 12px; padding: 14px; }
-.sec-h { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 800; }
+.sec-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; font-weight: 800; }
 .amt { display: flex; align-items: center; gap: 6px; }
 .amt .b { width: 30px; height: 30px; border-radius: 8px; background: var(--card-2); display: grid; place-items: center; font-size: 16px; }
 .amt .b:hover:not(:disabled) { background: #2b3144; }
@@ -32,15 +45,17 @@
 }
 .amt .v::-webkit-inner-spin-button, .amt .v::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .sec .range { margin: 18px 0 6px; }
-.ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); }
+.ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); }
 .preview { margin-top: 12px; font-size: 13px; color: var(--text-2); min-height: 38px; }
+/* «Станет:» и стоимость приглушены, раскладка — главное в строке. */
+.preview b { color: var(--text); font-weight: 700; }
 .preview.err { color: var(--bad); }
 .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
 .acts.one { grid-template-columns: 1fr; }
 
 /* Подсказка */
-.hint { gap: 10px; }
-.hint-icon { width: 44px; height: 44px; border-radius: 12px; background: var(--acc-bg); color: var(--acc-2); display: grid; place-items: center; font-size: 22px; }
+.hint .pbody { gap: 10px; }
+.hint-icon { width: 44px; height: 44px; flex: none; border-radius: 12px; background: var(--acc-bg); color: var(--acc-2); display: grid; place-items: center; font-size: 22px; }
 .hint .sec { display: grid; gap: 10px; font-size: 13px; color: var(--text-2); }
 .hint .sec p { display: flex; gap: 10px; align-items: flex-start; }
 .hint .sec .ti { font-size: 18px; color: var(--text); flex: none; }
@@ -54,28 +69,29 @@
 
 /* План */
 .facts { display: grid; gap: 10px; margin-top: 14px; }
-.fact { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-2); }
-.fact dd { font-size: 20px; color: var(--text); font-weight: 800; }
+.fact { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-2); }
+.fact dd { font-size: 20px; color: var(--text); font-weight: 800; text-align: right; }
 .queue-h { margin-top: 16px; }
-.queue { font-size: 13px; }
+/* Прокручивается очередь; если и так не помещается — всё содержимое панели. */
+.queue { flex: 0 1 auto; min-height: 76px; overflow-y: auto; font-size: 13px; }
 .queue li { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
 .qimg { width: 28px; height: 28px; flex: none; border-radius: 6px; background: var(--img); display: grid; place-items: center; }
 .qimg img { width: 28px; height: 28px; object-fit: contain; }
 .qimg .ti { font-size: 16px; color: var(--text-3); }
 .qn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.queue .r { margin-left: auto; color: var(--text-3); font-size: 12px; white-space: nowrap; }
-.queue .more { color: var(--text-3); }
+.queue .r { margin-left: auto; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.queue .more { color: var(--text-2); }
 .check { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--text-2); line-height: 1.5; }
 .check .ti { color: var(--ok); font-size: 16px; flex: none; }
-.run { height: 50px; margin-top: 16px; width: 100%; }
-.cancel { height: 40px; margin-top: 8px; width: 100%; }
+.run { height: 50px; width: 100%; }
+.cancel { height: 40px; width: 100%; }
 
 /* Ход */
-.progress { height: 8px; border-radius: 4px; background: var(--card-2); overflow: hidden; margin: 16px 0 10px; }
+.progress { height: 8px; flex: none; border-radius: 4px; background: var(--card-2); overflow: hidden; margin: 16px 0 10px; }
 .progress .fill { height: 100%; background: var(--acc); border-radius: 4px; }
 .run-view p { margin-top: 4px; font-size: 13px; }
+.run-view .foot { margin-top: 0; padding-top: 10px; }
 .wait { color: var(--warn); font-weight: 700; }
-.run-view .btn { margin-top: 14px; }
 
 /* Итог */
 .verdict { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; font-weight: 700; line-height: 1.45; }
@@ -84,5 +100,5 @@ p.verdict, .verdict > p { flex-direction: row; display: flex; gap: 8px; align-it
 .verdict.ok { color: var(--ok); }
 .verdict.bad { color: var(--bad); }
 .mismatches { display: grid; gap: 4px; font-size: 13px; font-weight: 600; padding-left: 26px; }
-.outcome .acts { margin-top: 8px; }
-.outcome .wide { margin-top: 16px; }
+/* Числа итога длиннее числа плана («было 121 — стало 121»): шрифт меньше, чтобы строка помещалась. */
+.outcome .fact dd { font-size: 16px; }

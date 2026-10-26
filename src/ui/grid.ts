@@ -6,10 +6,11 @@
 import { forgetToken, loadInventory, selectSkin, setFilter } from '../actions';
 import { h, icon } from '../dom';
 import { fmtInt, iconUrl } from '../format';
-import { errorText, t, tn } from '../i18n';
-import { counts, layoutOf, layoutText, pillsOf, visibleSkins, type SelectMode, type Sort } from '../model';
+import { errorText, t } from '../i18n';
+import { layoutOf, layoutText, pillsOf, visibleSkins, type SelectMode, type Sort } from '../model';
 import type { Panel, State } from '../store';
 import type { Plan, Skin, SkinAfter } from '../types';
+import { currentKey, emptyStateOf, gridKey, gridMeta } from './grid-model';
 import type { Part } from './shell';
 import { CARD_HEIGHT, GAP, MIN_CARD_WIDTH, columnsFor, visibleRange, windowDiff, type Span } from './virtual';
 
@@ -24,6 +25,7 @@ interface Slot {
   selected: boolean;
   dim: boolean;
   tabbable: boolean;
+  now: boolean;
   change: SkinAfter | undefined;
 }
 
@@ -46,13 +48,17 @@ function makeSlot(skin: Skin, index: number): Slot {
     ),
     h('div', { class: 'layout' }, ...pillsOf(layoutOf(skin)).map((p) => h('span', { class: p.stack ? 'pill st' : 'pill' }, p.text))),
   );
-  return { el, sub, skin, selected: false, dim: false, tabbable: false, change: undefined };
+  return { el, sub, skin, selected: false, dim: false, tabbable: false, now: false, change: undefined };
 }
 
-/** Приводит карточку к нужному виду. `after` — раскладка «станет» из плана, пока он открыт или идёт операция. */
-function patchSlot(slot: Slot, selected: boolean, tabbable: boolean, after: Map<string, SkinAfter> | null): void {
+/**
+ * Приводит карточку к нужному виду. `after` — раскладка «станет» из плана, пока он открыт или идёт операция;
+ * `current` — ключ скина, который ядро обрабатывает сейчас. Отметок «готово» нет: при ошибках они бы соврали.
+ */
+function patchSlot(slot: Slot, selected: boolean, tabbable: boolean, after: Map<string, SkinAfter> | null, current: string): void {
   const change = after?.get(slot.skin.key);
   const dim = after !== null && !change;
+  const now = current !== '' && slot.skin.key === current;
   if (slot.selected !== selected) {
     slot.selected = selected;
     slot.el.classList.toggle('sel', selected);
@@ -65,6 +71,10 @@ function patchSlot(slot: Slot, selected: boolean, tabbable: boolean, after: Map<
   if (slot.tabbable !== tabbable) {
     slot.tabbable = tabbable;
     slot.el.tabIndex = tabbable ? 0 : -1;
+  }
+  if (slot.now !== now) {
+    slot.now = now;
+    slot.el.classList.toggle('now', now);
   }
   if (slot.change !== change) {
     slot.change = change;
@@ -86,7 +96,9 @@ export function createGrid(el: HTMLElement): Part {
   sort.addEventListener('change', () => setFilter({ sort: sort.value as Sort }));
   const cards = h('div', { class: 'grid', role: 'listbox', 'aria-multiselectable': 'true', 'aria-label': t('grid.title') });
   const spacer = h('div', { class: 'spacer' }, cards);
-  const empty = h('p', { class: 'empty', hidden: true });
+  const emptyText = h('p', {});
+  const emptyButton = h('button', { class: 'btn sec', type: 'button' });
+  const empty = h('div', { class: 'empty', hidden: true }, emptyText, emptyButton);
   const scroller = h('div', { class: 'scroller' }, spacer, empty);
   el.append(
     banner,
@@ -185,7 +197,8 @@ export function createGrid(el: HTMLElement): Part {
     shown = { first: range.first, last: range.last };
     const selected = selectedKeys(state.selected);
     const after = afterOf(state.panel);
-    for (const [i, slot] of slots) patchSlot(slot, selected.has(slot.skin.key), i === focusIndex, after);
+    const current = currentKey(state.panel);
+    for (const [i, slot] of slots) patchSlot(slot, selected.has(slot.skin.key), i === focusIndex, after, current);
     if (hadFocus && !cards.contains(document.activeElement)) focusCard(focusIndex);
   };
 
@@ -214,26 +227,18 @@ export function createGrid(el: HTMLElement): Part {
     pick(Number(target.dataset.index), e.shiftKey ? 'range' : e.ctrlKey || e.metaKey ? 'toggle' : 'single');
   });
   cards.addEventListener('keydown', (e) => {
-    const moves: Record<string, number> = {
-      ArrowRight: 1,
-      ArrowLeft: -1,
-      ArrowDown: cols,
-      ArrowUp: -cols,
-      PageDown: cols * 3,
-      PageUp: -cols * 3,
-      Home: -list.length,
-      End: list.length,
-    };
-    if (e.key in moves) {
-      e.preventDefault();
-      moveFocus(focusIndex + moves[e.key]);
-    } else if (e.key === ' ') {
-      e.preventDefault();
-      pick(focusIndex, e.shiftKey ? 'range' : 'toggle');
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      pick(focusIndex, 'single');
-    }
+    const action = gridKey(e.key, e.shiftKey, e.repeat, cols, list.length);
+    if (!action) return;
+    e.preventDefault();
+    if (action.kind === 'move') moveFocus(focusIndex + action.delta);
+    else if (action.kind === 'pick') pick(focusIndex, action.mode);
+  });
+  // Кнопка пустого состояния: после неё сетка снова не пуста, фокус — на первую карточку, а не на <body>.
+  let emptyAction: 'showAll' | 'reset' | null = null;
+  emptyButton.addEventListener('click', () => {
+    if (emptyAction === 'showAll') setFilter({ show: 'all' });
+    else if (emptyAction === 'reset') setFilter({ search: '', show: 'all', categories: [] });
+    if (list.length) moveFocus(0);
   });
   cards.addEventListener('focusin', (e) => {
     const target = (e.target as HTMLElement).closest<HTMLElement>('.card[data-index]');
@@ -266,21 +271,26 @@ export function createGrid(el: HTMLElement): Part {
   return {
     update(s) {
       state = s;
-      const inventoryChanged = s.inventory !== lastInventory;
-      if (inventoryChanged) meta.textContent = s.inventory ? tn('grid.meta', counts(s.inventory).stacks) : '';
-      if (inventoryChanged || s.filter !== lastFilter) {
+      if (s.inventory !== lastInventory || s.filter !== lastFilter) {
         if (lastFilter && s.filter !== lastFilter) scroller.scrollTop = 0;
         list = s.inventory ? visibleSkins(s.inventory, s.filter) : [];
         lastInventory = s.inventory;
         lastFilter = s.filter;
         sort.value = s.filter.sort;
-        empty.hidden = !(s.inventory && list.length === 0);
-        empty.textContent = s.inventory?.skins.length === 0 ? t('grid.empty') : t('grid.nothingFound');
+        // Заголовок считает то, что в сетке сейчас, а не весь инвентарь.
+        meta.textContent = s.inventory ? gridMeta(s.filter.show, list.length) : '';
+        const blank = s.inventory && list.length === 0 ? emptyStateOf(s.inventory, s.filter) : null;
+        empty.hidden = !blank;
+        emptyText.textContent = blank ? t(blank.text) : '';
+        emptyAction = blank?.action ?? null;
+        emptyButton.hidden = !emptyAction;
+        emptyButton.textContent = emptyAction === 'showAll' ? t('grid.showAll') : emptyAction === 'reset' ? t('grid.resetFilters') : '';
       }
       paintBanner(s);
       if (s.loading !== lastLoading) {
         lastLoading = s.loading;
         cards.setAttribute('aria-busy', String(s.loading));
+        cards.setAttribute('aria-label', t(s.loading ? 'grid.loading' : 'grid.title'));
       }
       render();
     },

@@ -2,7 +2,7 @@
 // названия из Steam не могут вставить разметку.
 
 type AttrValue = string | number | boolean | null | undefined | EventListener;
-type Child = Node | string | null | undefined | false;
+export type Child = Node | string | null | undefined | false;
 
 export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
