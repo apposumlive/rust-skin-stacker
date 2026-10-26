@@ -1,0 +1,3 @@
+# aws-lc-sys (TLS для reqwest через rustls) на Windows x86-64 без этого требует NASM.
+[env]
+AWS_LC_SYS_PREBUILT_NASM = "1"

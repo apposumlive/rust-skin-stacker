@@ -2,3 +2,6 @@
 src-tauri/target/
 node_modules/
 dist/
+
+# Tauri: сгенерированные схемы прав
+src-tauri/gen/
