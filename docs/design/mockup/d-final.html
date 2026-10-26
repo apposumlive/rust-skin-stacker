@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Rust Skin Stacker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+  :root {
+    --bg: #0f1117; --panel: #161922; --card: #1b1f2b; --card-2: #232838; --img: #20253a;
+    --line: #262b3a; --text: #eceef5; --text-2: #9aa0b4; --text-3: #6c7287;
+    --acc: #5b5bf7; --acc-2: #7171ff; --acc-bg: rgba(91, 91, 247, .14); --ok: #3ecf8e; --warn: #f2b84b;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { width: 1280px; height: 800px; overflow: hidden; background: var(--bg); color: var(--text); font-family: "Manrope", sans-serif; }
+  ::selection { background: var(--acc); color: #fff; }
+  .top { height: 60px; display: flex; align-items: center; gap: 10px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; margin-right: 18px; }
+  .logo { width: 30px; height: 30px; border-radius: 8px; background: var(--acc); display: grid; place-items: center; font-size: 18px; }
+  .bulk { height: 38px; padding: 0 16px; border-radius: 9px; display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; background: var(--card-2); color: var(--text); }
+  .bulk.active { background: var(--acc-bg); color: var(--acc-2); box-shadow: inset 0 0 0 1.5px var(--acc); }
+  .acct { margin-left: auto; display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+  .lang { color: var(--text-2); font-size: 13px; font-weight: 700; margin-left: 10px; }
+  .wrap { display: grid; grid-template-columns: 200px minmax(0, 1fr) 340px; height: calc(800px - 60px); }
+  .filters { border-right: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 18px; }
+  .search { height: 38px; border-radius: 9px; background: var(--card); display: flex; align-items: center; gap: 8px; padding: 0 12px; color: var(--text-3); font-size: 14px; }
+  .fh { font-size: 11px; font-weight: 800; color: var(--text-3); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .opt { display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 6px 0; color: var(--text); }
+  .opt .c { margin-left: auto; color: var(--text-3); font-size: 12px; }
+  .box { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid #3d4357; display: grid; place-items: center; font-size: 13px; flex: none; }
+  .box.on { background: var(--acc); border-color: var(--acc); }
+  .stats { margin-top: auto; font-size: 12px; color: var(--text-3); line-height: 1.6; }
+  .stats b { color: var(--text-2); font-weight: 700; }
+  .content { padding: 16px 18px; min-width: 0; display: flex; flex-direction: column; gap: 14px; overflow: hidden; }
+  .bar { display: flex; align-items: center; gap: 10px; min-height: 38px; }
+  .bar h1 { margin: 0; font-size: 18px; font-weight: 800; }
+  .bar .meta { color: var(--text-2); font-size: 13px; }
+  .bar .sort { margin-left: auto; height: 34px; padding: 0 12px; border-radius: 8px; background: var(--card); display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+  .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .card { position: relative; background: var(--card); border-radius: 12px; padding: 10px 10px 12px; border: 1.5px solid transparent; transition: opacity .2s; }
+  .card.sel { border-color: var(--acc); background: var(--card-2); }
+  .card.dim { opacity: .35; }
+  .card .nm { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .sub { font-size: 12px; color: var(--text-2); margin-top: 1px; }
+  .imgbox { position: relative; height: 96px; margin-top: 8px; border-radius: 8px; background: var(--img); display: grid; place-items: center; }
+  .imgbox img { width: 84px; height: 84px; object-fit: contain; }
+  .badge { position: absolute; top: 6px; right: 6px; height: 22px; padding: 0 7px; border-radius: 6px; background: rgba(15,17,23,.75); font-size: 12px; font-weight: 800; display: flex; align-items: center; gap: 3px; }
+  .after { position: absolute; left: 6px; bottom: 6px; height: 22px; padding: 0 7px; border-radius: 6px; background: var(--acc-bg); color: var(--acc-2); font-size: 11px; font-weight: 800; display: flex; align-items: center; gap: 4px; }
+  .layout { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+  .pill { height: 20px; padding: 0 7px; border-radius: 5px; background: var(--card-2); font-size: 11px; font-weight: 700; color: var(--text-2); display: flex; align-items: center; }
+  .pill.st { color: var(--text); }
+  .side { border-left: 1px solid var(--line); background: var(--panel); padding: 18px; display: flex; flex-direction: column; min-height: 0; }
+  .big { height: 196px; border-radius: 12px; background: var(--img); display: grid; place-items: center; }
+  .big img { width: 176px; height: 176px; object-fit: contain; }
+  .iname { margin: 14px 0 4px; font-size: 20px; font-weight: 800; }
+  .isub { color: var(--text-2); font-size: 13px; }
+  .kv { margin-top: 12px; display: grid; gap: 6px; font-size: 13px; }
+  .kv div { display: flex; justify-content: space-between; color: var(--text-2); }
+  .kv b { color: var(--text); font-weight: 700; }
+  .kv .yes { color: var(--ok); }
+  .sec { margin-top: 14px; background: var(--card); border-radius: 12px; padding: 14px; }
+  .sec-h { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 800; }
+  .amt { display: flex; align-items: center; gap: 6px; }
+  .amt .b { width: 30px; height: 30px; border-radius: 8px; background: var(--card-2); display: grid; place-items: center; }
+  .amt .v { width: 44px; height: 30px; border-radius: 8px; background: var(--bg); display: grid; place-items: center; font-weight: 800; font-size: 15px; }
+  .track { position: relative; height: 6px; background: var(--card-2); border-radius: 3px; margin: 18px 6px 6px; }
+  .track .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 33%; background: var(--acc); border-radius: 3px; }
+  .track .knob { position: absolute; left: 33%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-3); padding: 0 2px; }
+  .result { margin-top: 12px; font-size: 13px; color: var(--text-2); }
+  .result b { color: var(--text); }
+  .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+  .btn { height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; font-weight: 800; font-size: 14px; }
+  .btn.pri { background: var(--acc); color: #fff; }
+  .btn.sec2 { background: var(--card-2); color: var(--text); }
+  .foot { margin-top: auto; font-size: 12px; color: var(--text-3); line-height: 1.5; }
+  .plan-h { font-size: 20px; font-weight: 800; margin: 2px 0 4px; }
+  .facts { display: grid; gap: 10px; margin-top: 14px; }
+  .fact { display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 10px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-2); }
+  .fact b { font-size: 20px; color: var(--text); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .queue { list-style: none; margin: 8px 0 0; padding: 0; font-size: 13px; }
+  .queue li { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+  .queue img { width: 28px; height: 28px; object-fit: contain; background: var(--img); border-radius: 6px; }
+  .queue .r { margin-left: auto; color: var(--text-3); font-size: 12px; }
+  .check { font-size: 12px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; margin-top: 12px; line-height: 1.5; }
+  .check i { color: var(--ok); font-size: 16px; }
+  .run { height: 50px; margin-top: 16px; }
+  .synthetic { position: absolute; left: 218px; bottom: 8px; font-size: 11px; color: #4b5064; }
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><span class="logo"><i class="ti ti-stack-2"></i></span>Rust Skin Stacker</div>
+  <div class="bulk" id="b-split"><i class="ti ti-arrows-split-2"></i>Разделить всё</div>
+  <div class="bulk"><i class="ti ti-stack-push"></i>Собрать всё</div>
+  <div class="acct"><span class="dot"></span>7656…4821 · токен ещё 18 ч</div>
+  <div class="lang">RU</div>
+</div>
+<div class="wrap">
+  <aside class="filters">
+    <div class="search"><i class="ti ti-search"></i>Поиск</div>
+    <div><div class="fh">Показать</div>
+      <div class="opt"><span class="box"></span>Все<span class="c" id="c-all"></span></div>
+      <div class="opt"><span class="box on"><i class="ti ti-check"></i></span>Стопки<span class="c" id="c-st"></span></div>
+      <div class="opt"><span class="box"></span>Дубли<span class="c" id="c-du"></span></div></div>
+    <div><div class="fh">Тип</div>
+      <div class="opt"><span class="box"></span>Оружие</div>
+      <div class="opt"><span class="box"></span>Одежда</div>
+      <div class="opt"><span class="box"></span>Постройки</div>
+      <div class="opt"><span class="box"></span>Инструменты</div></div>
+    <div class="stats" id="stats"></div>
+  </aside>
+  <section class="content">
+    <div class="bar"><h1>Инвентарь</h1><span class="meta" id="meta"></span><span class="sort"><i class="ti ti-arrows-sort"></i>Больше всего штук</span></div>
+    <div class="grid" id="grid"></div>
+  </section>
+  <aside class="side" id="side"></aside>
+</div>
+<div class="synthetic">Картинки и названия настоящие, количества для примера</div>
+<script src="items.js"></script>
+<script src="data.js"></script>
+<script>
+  const T = window.TOTALS, G = window.GROUPS;
+  const mode = location.hash === '#plan' ? 'plan' : 'item';
+  const fmt = n => n.toLocaleString('ru-RU');
+  const st = G.filter(g => g.affected).length, du = G.filter(g => g.stacks.length + g.singles > 1).length;
+  document.getElementById('c-all').textContent = G.length;
+  document.getElementById('c-st').textContent = st;
+  document.getElementById('c-du').textContent = du;
+  document.getElementById('stats').innerHTML = `Всего <b>${fmt(T.items)} шт.</b><br>Записей в Steam <b>${fmt(T.records)}</b><br>Стопок <b>${T.stacks}</b>`;
+  document.getElementById('meta').textContent = `${st} предметов в стопках`;
+  const order = [...G].sort((a, b) => (b.affected - a.affected) || (b.total - a.total));
+  const sel = order[4];
+  document.getElementById('grid').innerHTML = order.slice(0, 12).map(g => {
+    const pills = g.stacks.map(s => `<span class="pill st">×${s}</span>`).join('') + (g.singles ? `<span class="pill">${g.singles} по одному</span>` : '');
+    const isSel = mode === 'item' && g === sel;
+    const dim = mode === 'plan' && !g.affected;
+    const sub = mode === 'plan' && g.affected ? `<span style="color:var(--acc-2)">станет ${g.total} по одному</span>` : `${g.total} шт.`;
+    return `<div class="card ${isSel ? 'sel' : ''} ${dim ? 'dim' : ''}">
+      <div class="nm">${g.name}</div><div class="sub">${sub}</div>
+      <div class="imgbox"><img src="${g.icon}" alt=""></div>
+      <div class="layout">${pills}</div></div>`;
+  }).join('');
+  const side = document.getElementById('side');
+  if (mode === 'item') {
+    const g = sel, s = g.stacks[0];
+    side.innerHTML = `
+      <div class="big"><img src="${g.icon}" alt=""></div>
+      <div class="iname">${g.name}</div>
+      <div class="isub">${g.total} шт. · стопка ×${s}${g.singles ? ` и ${g.singles} по одному` : ''}</div>
+      <div class="kv">
+        <div>Можно продать на площадке Steam<b class="yes">да</b></div>
+        <div>Можно обменять<b class="yes">да</b></div>
+        <div>Записей в инвентаре<b>${g.stacks.length + g.singles}</b></div>
+      </div>
+      <div class="sec">
+        <div class="sec-h"><span>Отделить по одному</span>
+          <span class="amt"><span class="b"><i class="ti ti-minus"></i></span><span class="v">2</span><span class="b"><i class="ti ti-plus"></i></span></span></div>
+        <div class="track"><div class="fill"></div><div class="knob"></div></div>
+        <div class="ticks"><span>1</span><span>${s - 1}</span></div>
+        <div class="result">Станет: <b>стопка ×${s - 2}</b> и <b>2 по одному</b> · 2 запроса, ~3 с</div>
+      </div>
+      <div class="acts"><span class="btn pri"><i class="ti ti-arrows-split-2"></i>Отделить 2</span><span class="btn sec2"><i class="ti ti-stack-push"></i>Собрать</span></div>
+      <div class="foot">Перед операцией инвентарь перечитывается. Ctrl + клик — выбрать несколько предметов.</div>`;
+  } else {
+    document.getElementById('b-split').classList.add('active');
+    const q = [];
+    order.filter(g => g.affected).forEach(g => g.stacks.forEach(s => q.push([g, s])));
+    const min = Math.ceil(T.requests * 1.5 / 60);
+    side.innerHTML = `
+      <div class="plan-h">Разделить всё</div>
+      <div class="isub">Каждая стопка станет отдельными предметами</div>
+      <div class="facts">
+        <div class="fact">Стопок разделится<b>${T.stacks}</b></div>
+        <div class="fact">Запросов к Steam<b>${T.requests}</b></div>
+        <div class="fact">Займёт примерно<b>${min} мин</b></div>
+      </div>
+      <div class="fh" style="margin-top:16px">Очередь</div>
+      <ul class="queue">${q.slice(0, 5).map(([g, s]) => `<li><img src="${g.icon}" alt="">${g.name} ×${s}<span class="r">${s - 1} запр.</span></li>`).join('')}
+        <li style="color:var(--text-3)">и ещё ${q.length - 5} стопок</li></ul>
+      <div class="check"><i class="ti ti-scale"></i>После запуска инвентарь перечитается и количество сверится: было ${fmt(T.items)} шт. — должно остаться ${fmt(T.items)} шт.</div>
+      <div style="margin-top:auto"></div>
+      <div class="btn pri run"><i class="ti ti-player-play"></i>Запустить</div>
+      <div class="btn sec2" style="height:40px;margin-top:8px">Отмена</div>`;
+  }
+</script>
+</body>
+</html>
