@@ -1,0 +1,32 @@
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 17px; white-space: nowrap; }
+.logo { width: 30px; height: 30px; border-radius: 8px; background: var(--acc); color: #fff; display: grid; place-items: center; font-size: 18px; }
+.lang { height: 30px; min-width: 40px; padding: 0 8px; border-radius: 8px; color: var(--text-2); font-size: 13px; font-weight: 800; }
+.lang:hover { background: var(--card); color: var(--text); }
+
+.login { height: 100%; overflow-y: auto; display: grid; place-items: center; padding: 32px 24px; }
+.login-card {
+  width: min(560px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+  padding: 28px; display: flex; flex-direction: column; gap: 16px; animation: rise 0.25s var(--ease);
+}
+.login-head { display: flex; align-items: center; justify-content: space-between; }
+.login-title { font-size: 24px; font-weight: 800; line-height: 1.2; }
+.steps { counter-reset: step; display: grid; gap: 10px; }
+.steps li { display: flex; gap: 12px; align-items: flex-start; }
+.steps li::before {
+  counter-increment: step; content: counter(step); flex: none; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--acc-bg); color: var(--acc-2); font-weight: 800; font-size: 12px; display: grid; place-items: center;
+}
+.login-field {
+  width: 100%; min-height: 104px; resize: vertical; background: var(--bg); border: 1.5px solid var(--line);
+  border-radius: 10px; padding: 12px; font: 500 12px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+}
+.login-field:focus { outline: none; border-color: var(--acc); }
+.login-status { min-height: 20px; font-size: 13px; color: var(--text-2); }
+.login-status.ok { color: var(--ok); }
+.login-status.bad { color: var(--bad); }
+.safe { background: var(--card); border-radius: 12px; padding: 14px 16px; display: grid; gap: 8px; }
+.safe h2 { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; }
+.safe h2 .ti { color: var(--ok); font-size: 18px; }
+.safe li { position: relative; padding-left: 14px; font-size: 13px; color: var(--text-2); }
+.safe li::before { content: ''; position: absolute; left: 2px; top: 8px; width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
+.disclaimer { font-size: 12px; color: var(--text-3); text-align: center; }
