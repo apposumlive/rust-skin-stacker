@@ -1,0 +1,18 @@
+.backdrop { position: fixed; inset: 0; z-index: 30; background: rgba(5, 6, 10, 0.55); animation: fade 0.15s var(--ease); }
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 31; width: 380px; max-width: 100%;
+  padding: 22px; display: flex; flex-direction: column; gap: 18px;
+  background: var(--panel); border-left: 1px solid var(--line); box-shadow: -16px 0 40px rgba(0, 0, 0, 0.35);
+  animation: slide-in 0.2s var(--ease);
+}
+@keyframes slide-in { from { transform: translateX(24px); opacity: 0; } }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; }
+.drawer-head h2 { font-size: 20px; font-weight: 800; }
+.field { display: grid; gap: 8px; }
+.field .fh { margin: 0; }
+.field-row { display: flex; align-items: baseline; justify-content: space-between; }
+.field-row .v { font-weight: 800; }
+.select { height: 40px; padding: 0 12px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--card); color: var(--text); font-size: 14px; }
+.select:focus { outline: none; border-color: var(--acc); }
+.drawer .range { margin: 10px 0 4px; }
+.field-error { min-height: 18px; font-size: 13px; color: var(--bad); }
