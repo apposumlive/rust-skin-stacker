@@ -85,10 +85,21 @@ struct Session {
     last_plan: Option<Plan>,
 }
 
+impl Session {
+    /// В сессии лежит именно этот токен (не забыт и не заменён другим).
+    fn holds(&self, token: &Token) -> bool {
+        self.token
+            .as_ref()
+            .is_some_and(|t| t.secret == token.secret)
+    }
+}
+
 pub struct AppState {
     client: SteamClient,
     sleep: SleepFn,
     session: tokio::sync::Mutex<Session>,
+    /// Сигнал «токен забыт»: обрывает чтение инвентаря, которое уже идёт.
+    forgotten: tokio::sync::Notify,
     stop: AtomicBool,
     running: AtomicBool,
     journal: Journal,
@@ -118,6 +129,7 @@ impl AppState {
             client,
             sleep,
             session: tokio::sync::Mutex::new(Session::default()),
+            forgotten: tokio::sync::Notify::new(),
             stop: AtomicBool::new(false),
             running: AtomicBool::new(false),
             journal: Journal::default(),
@@ -144,6 +156,8 @@ impl AppState {
     pub async fn forget_token(&self) {
         self.stop.store(true, Ordering::SeqCst);
         *self.session.lock().await = Session::default();
+        // Чтение инвентаря в пути бросаем: ни страниц, ни повторов с забытым токеном.
+        self.forgotten.notify_waiters();
         self.journal.add("token forgotten");
     }
 
@@ -161,8 +175,20 @@ impl AppState {
         Ok(token)
     }
 
+    /// Читает инвентарь, пока этот токен в сессии. Забыли или заменили — чтение обрывается.
     async fn read_inventory(&self, token: &Token, lang: &str) -> Result<Inventory, UiError> {
-        match inventory::load(&self.client, token, steam_language(lang)).await {
+        // Подписка раньше проверки: «Забыть» между ними не потеряется.
+        let forgotten = self.forgotten.notified();
+        if !self.session.lock().await.holds(token) {
+            return Err(self.read_dropped());
+        }
+        let read = inventory::load(&self.client, token, steam_language(lang));
+        let result = tokio::select! {
+            biased;
+            () = forgotten => return Err(self.read_dropped()),
+            result = read => result,
+        };
+        match result {
             Ok(inv) => {
                 self.journal.add(format!(
                     "inventory read: {} skins, {} items",
@@ -178,12 +204,32 @@ impl AppState {
         }
     }
 
+    fn read_dropped(&self) -> UiError {
+        self.journal
+            .add("inventory read dropped: the token was forgotten or replaced");
+        UiError::new("noToken")
+    }
+
+    /// Кладёт инвентарь в сессию, только если в ней всё ещё тот же токен.
+    /// Проверка и запись идут под одним замком, поэтому «Забыть» не проскочит между ними.
+    async fn store(&self, token: &Token, inv: &Inventory, last_plan: Option<Plan>) -> bool {
+        let mut session = self.session.lock().await;
+        if !session.holds(token) {
+            return false;
+        }
+        session.inventory = Some(inv.clone());
+        session.last_plan = last_plan;
+        true
+    }
+
     pub async fn load_inventory(&self, lang: &str, now: i64) -> Result<Inventory, UiError> {
         let token = self.token(now).await?;
         let inv = self.read_inventory(&token, lang).await?;
-        let mut session = self.session.lock().await;
-        session.inventory = Some(inv.clone());
-        session.last_plan = None;
+        if !self.store(&token, &inv, None).await {
+            self.journal
+                .add("token forgotten or replaced during the read, nothing stored");
+            return Err(UiError::new("noToken"));
+        }
         Ok(inv)
     }
 
@@ -227,10 +273,10 @@ impl AppState {
         // Правило 1: перед запуском инвентарь перечитывается.
         let before = self.read_inventory(&token, lang).await?;
         let plan = plan::build(&before, &operation);
-        {
-            let mut session = self.session.lock().await;
-            session.inventory = Some(before.clone());
-            session.last_plan = Some(plan.clone());
+        if !self.store(&token, &before, Some(plan.clone())).await {
+            self.journal
+                .add("token forgotten or replaced during the read, nothing stored");
+            return Err(UiError::new("noToken"));
         }
         let unchanged =
             previewed.is_some_and(|p| p.operation == operation && p.steps == plan.steps);
@@ -275,19 +321,17 @@ impl AppState {
         ));
 
         // «Забыть токен» во время запуска: токен больше не используем, сессию не трогаем.
-        if self.session.lock().await.token.is_none() {
-            self.journal
-                .add("token forgotten during the run, check skipped");
-            return Ok(StartResult::Finished {
-                outcome,
-                reconciliation: None,
-                inventory: None,
-            });
+        if !self.session.lock().await.holds(&token) {
+            return Ok(self.check_skipped(outcome));
         }
 
         // Правило 7: сверка по свежему чтению инвентаря.
         match self.read_inventory(&token, lang).await {
             Ok(after) => {
+                // «Забыть» во время чтения: в сессию ничего не пишем, окну инвентарь не отдаём.
+                if !self.store(&token, &after, None).await {
+                    return Ok(self.check_skipped(outcome));
+                }
                 let reconciliation = inventory::reconcile(&before, &after);
                 self.journal.add(format!(
                     "check: before {}, after {}, mismatches {}",
@@ -299,9 +343,6 @@ impl AppState {
                     self.journal
                         .add(format!("mismatch «{}»: {} -> {}", m.key, m.before, m.after));
                 }
-                let mut session = self.session.lock().await;
-                session.inventory = Some(after.clone());
-                session.last_plan = None;
                 Ok(StartResult::Finished {
                     outcome,
                     reconciliation: Some(reconciliation),
@@ -313,6 +354,17 @@ impl AppState {
                 reconciliation: None,
                 inventory: None,
             }),
+        }
+    }
+
+    /// Запуск закончен, а токен уже забыт: сверки нет, окну инвентарь не отдаём.
+    fn check_skipped(&self, outcome: RunOutcome) -> StartResult {
+        self.journal
+            .add("token forgotten during the run, check skipped");
+        StartResult::Finished {
+            outcome,
+            reconciliation: None,
+            inventory: None,
         }
     }
 
@@ -416,13 +468,26 @@ mod tests {
     const INV: &str = "/IEconService/GetInventoryItemsWithDescriptions/v1/";
     const SPLIT: &str = "/IInventoryService/SplitItemStack/v1/";
 
-    fn inventory_reply(amount: u32) -> ResponseTemplate {
-        ResponseTemplate::new(200).set_body_json(json!({"response": {
+    fn inventory_body(amount: u32) -> serde_json::Value {
+        json!({"response": {
             "assets": [{"assetid": "1001", "classid": "c1", "instanceid": "0", "amount": amount.to_string()}],
             "descriptions": [{"classid": "c1", "instanceid": "0", "market_hash_name": "Outlaw Revolver",
                               "name": "Outlaw Revolver", "tradable": 1, "marketable": 1}],
             "total_inventory_count": 1
-        }}))
+        }})
+    }
+
+    fn inventory_reply(amount: u32) -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(inventory_body(amount))
+    }
+
+    /// Не последняя страница: Steam говорит, что есть ещё, и называет курсор.
+    /// Если чтение не оборвали, за ней уйдёт ещё один запрос.
+    fn paged_reply(amount: u32) -> ResponseTemplate {
+        let mut body = inventory_body(amount);
+        body["response"]["more_items"] = json!(true);
+        body["response"]["last_assetid"] = json!("1001");
+        ResponseTemplate::new(200).set_body_json(body)
     }
 
     type SleepLog = Arc<Mutex<Vec<Duration>>>;
@@ -947,7 +1012,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn forgetting_the_token_during_a_run_stops_all_use_of_it() {
+    async fn forgetting_the_token_during_a_run_sends_no_further_requests() {
         let server = MockServer::start().await;
         mount_inventory(&server, 3).await;
         Mock::given(method("POST"))
@@ -974,7 +1039,8 @@ mod tests {
         assert_eq!(outcome.done, 1);
         assert!(reconciliation.is_none());
         assert!(inventory.is_none());
-        // Ещё одно чтение — только перед запуском; после «Забыть токен» запросов с токеном нет.
+        // Запрос, который уже в пути, дойдёт до конца; после него запросов с забытым токеном нет.
+        // Ещё одно чтение — только перед запуском.
         assert_eq!(requests_to(&server, "GET").await, 2);
         assert_eq!(requests_to(&server, "POST").await, 1);
         {
@@ -982,6 +1048,261 @@ mod tests {
             assert!(session.token.is_none());
             assert!(session.inventory.is_none());
         }
+        assert!(
+            state
+                .journal_text()
+                .contains("token forgotten during the run, check skipped")
+        );
+        assert_idle(&state);
+    }
+
+    /// «Забыть токен» без сигнала: ведёт себя как «Забыть», нажатое сразу после конца чтения,
+    /// но до записи в сессию. Так охрана записи проверяется отдельно от обрыва чтения.
+    async fn clear_session_silently(state: &AppState) {
+        *state.session.lock().await = Session::default();
+    }
+
+    #[tokio::test]
+    async fn reading_with_a_token_that_is_not_in_the_session_sends_nothing() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(inventory_reply(3))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let state = state_for(&server);
+        with_token(&state).await;
+        let token = test_token();
+        state.forget_token().await;
+        let err = state.read_inventory(&token, "en").await.unwrap_err();
+        assert_eq!(err.code, "noToken");
+    }
+
+    #[tokio::test]
+    async fn forgetting_the_token_drops_the_inventory_read_in_flight() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(paged_reply(3).set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        let state = state_for(&server);
+        with_token(&state).await;
+
+        // «Забыть» и новый токен посреди чтения первой страницы.
+        let (result, ()) = tokio::join!(state.load_inventory("en", NOW), async {
+            wait_for_requests(&server, "GET", 1).await;
+            state.forget_token().await;
+            state.set_token(&raw_token(), NOW).await.unwrap();
+        });
+        assert_eq!(result.unwrap_err().code, "noToken");
+        // Вторую страницу старым токеном не просили.
+        assert_eq!(requests_to(&server, "GET").await, 1);
+        let session = state.session.lock().await;
+        assert!(session.token.is_some());
+        assert_ne!(session.token, Some(test_token()));
+        assert!(session.inventory.is_none());
+        assert!(session.last_plan.is_none());
+    }
+
+    #[tokio::test]
+    async fn inventory_read_for_a_replaced_token_is_not_stored() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3).set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        let state = state_for(&server);
+        with_token(&state).await;
+
+        // Вставили другой токен, пока читался инвентарь первого: чтение никто не обрывал.
+        let (result, info) = tokio::join!(state.load_inventory("en", NOW), async {
+            wait_for_requests(&server, "GET", 1).await;
+            state.set_token(&raw_token(), NOW).await
+        });
+        info.unwrap();
+        assert_eq!(result.unwrap_err().code, "noToken");
+        {
+            let session = state.session.lock().await;
+            assert!(session.token.is_some());
+            assert_ne!(session.token, Some(test_token()));
+            assert!(session.inventory.is_none());
+            assert!(session.last_plan.is_none());
+        }
+        assert!(state.journal_text().contains("nothing stored"));
+    }
+
+    #[tokio::test]
+    async fn forgetting_the_token_during_the_pre_run_read_stores_and_runs_nothing() {
+        let server = MockServer::start().await;
+        // Загрузка быстрая, чтение перед запуском медленное и «не последнее».
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(paged_reply(3).set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(0)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, ()) =
+            tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
+                wait_for_requests(&server, "GET", 2).await;
+                state.forget_token().await;
+            });
+        // Ни нового плана окну, ни записи в сессию.
+        assert_eq!(result.unwrap_err().code, "noToken");
+        assert_eq!(requests_to(&server, "GET").await, 2);
+        assert_eq!(requests_to(&server, "POST").await, 0);
+        {
+            let session = state.session.lock().await;
+            assert!(session.token.is_none());
+            assert!(session.inventory.is_none());
+            assert!(session.last_plan.is_none());
+        }
+        // Без токена нет и предпросмотра.
+        assert_eq!(
+            state.preview(Operation::SplitAll).await.unwrap_err().code,
+            "noInventory"
+        );
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn pre_run_read_finishing_after_the_session_was_cleared_is_not_stored() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3).set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(0)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, ()) =
+            tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
+                wait_for_requests(&server, "GET", 2).await;
+                clear_session_silently(&state).await;
+            });
+        assert_eq!(result.unwrap_err().code, "noToken");
+        assert_eq!(requests_to(&server, "POST").await, 0);
+        {
+            let session = state.session.lock().await;
+            assert!(session.inventory.is_none());
+            assert!(session.last_plan.is_none());
+        }
+        assert!(state.journal_text().contains("nothing stored"));
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn forgetting_the_token_during_the_post_run_read_drops_it() {
+        let server = MockServer::start().await;
+        // Загрузка и чтение перед запуском быстрые, чтение после запуска медленное и «не последнее».
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(paged_reply(3).set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(2)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, ()) =
+            tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
+                wait_for_requests(&server, "GET", 3).await;
+                state.forget_token().await;
+            });
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            inventory,
+        } = result.unwrap()
+        else {
+            panic!("expected Finished");
+        };
+        assert_eq!(outcome.done, 2);
+        assert!(reconciliation.is_none());
+        assert!(inventory.is_none());
+        // Вторую страницу после «Забыть» не просили.
+        assert_eq!(requests_to(&server, "GET").await, 3);
+        {
+            let session = state.session.lock().await;
+            assert!(session.token.is_none());
+            assert!(session.inventory.is_none());
+            assert!(session.last_plan.is_none());
+        }
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn post_run_read_finishing_after_the_session_was_cleared_is_not_stored() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3).set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(2)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, ()) =
+            tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
+                wait_for_requests(&server, "GET", 3).await;
+                clear_session_silently(&state).await;
+            });
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            inventory,
+        } = result.unwrap()
+        else {
+            panic!("expected Finished");
+        };
+        assert_eq!(outcome.reason, StopReason::Finished);
+        assert_eq!(outcome.done, 2);
+        assert!(reconciliation.is_none());
+        assert!(inventory.is_none());
+        assert!(state.session.lock().await.inventory.is_none());
         assert!(
             state
                 .journal_text()
