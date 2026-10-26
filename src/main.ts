@@ -17,6 +17,7 @@ import { visibleSkins } from './model';
 import { getState, initState, initialFilter, setState, subscribe, type State } from './store';
 import { renderLogin, type Screen } from './ui/login';
 import { mountMain } from './ui/shell';
+import { focusMenuButton } from './ui/topbar';
 
 async function boot(): Promise<void> {
   // В обычном браузере (npm run dev) Tauri нет — работает демо-режим. В сборку он не попадает.
@@ -51,11 +52,14 @@ async function boot(): Promise<void> {
   const show = (s: State) => {
     const id = `${s.screen}:${s.lang}`;
     if (id === shown) return;
+    const relang = s.screen === 'main' && shown.startsWith('main:');
     shown = id;
     document.documentElement.lang = s.lang;
     screen?.destroy();
     screen = s.screen === 'login' ? renderLogin() : mountMain();
     root.replaceChildren(screen.el);
+    // Смена языка пересоздаёт главное окно, и фокус со старых элементов уходит на BODY: вернём его на кнопку меню.
+    if (relang && (!document.activeElement || document.activeElement === document.body)) focusMenuButton();
   };
   subscribe(show);
   show(getState());
