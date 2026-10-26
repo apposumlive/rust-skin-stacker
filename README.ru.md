@@ -27,7 +27,9 @@ Steam складывает одинаковые скины Rust в одну за
 | Система | Файл |
 |---|---|
 | Windows 10/11 | `…_x64-setup.exe` (установщик) или `…_x64_en-US.msi` |
-| Linux | `….AppImage`, `….deb` (Ubuntu 24.04+, Debian 13+) или `….rpm` (Fedora 40+) |
+| Linux | `….AppImage`, `….deb` или `….rpm` |
+
+Всем сборкам для Linux, и AppImage тоже, нужна glibc 2.39 или новее: Ubuntu 24.04+, Debian 13+, Fedora 40+.
 
 **SmartScreen в Windows** может предупредить, что издатель неизвестен. Это потому, что сборки не подписаны сертификатом: он стоит денег каждый год. Проверьте файл, как описано ниже, и нажмите «Подробнее → Выполнить в любом случае».
 
@@ -59,7 +61,7 @@ sha256sum -c SHA256SUMS --ignore-missing
 gh attestation verify <файл> --repo <владелец>/rust-skin-stacker
 ```
 
-`<владелец>` — аккаунт в адресе этой страницы. Точная команда есть в описании релиза.
+Для второй команды нужен [GitHub CLI](https://cli.github.com/), в котором выполнен вход: `gh auth login`. `<владелец>` — аккаунт в адресе этой страницы. Точная команда есть в описании релиза.
 
 ## Как идёт операция
 
@@ -80,7 +82,9 @@ npm run tauri build
 
 Установщики появятся в `src-tauri/target/release/bundle/`.
 
-Для разработки: `npm run tauri dev` открывает приложение, а `npm run dev` — окно в обычном браузере в демо-режиме с выдуманными данными. Тесты: `npm test` и `cargo test --manifest-path src-tauri/Cargo.toml`.
+Для разработки: `npm run tauri dev` открывает приложение. `npm run dev` запускает окно на http://localhost:1420 для обычного браузера, с выдуманными данными вместо Steam; сам браузер он не открывает. Демо-данные: `?demo=main`, `?demo=item`, `?demo=plan`.
+
+Тесты: `npm test`, затем `npm run build` и `cargo test --manifest-path src-tauri/Cargo.toml` — тестам Rust нужна собранная папка `dist/`.
 
 ## Лицензия
 

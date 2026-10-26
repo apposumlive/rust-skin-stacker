@@ -27,7 +27,9 @@ Get the latest version on the **Releases** page of this repository:
 | System | File |
 |---|---|
 | Windows 10/11 | `…_x64-setup.exe` (installer) or `…_x64_en-US.msi` |
-| Linux | `….AppImage`, `….deb` (Ubuntu 24.04+, Debian 13+) or `….rpm` (Fedora 40+) |
+| Linux | `….AppImage`, `….deb` or `….rpm` |
+
+All Linux builds, the AppImage included, need glibc 2.39 or newer: Ubuntu 24.04+, Debian 13+, Fedora 40+.
 
 **Windows SmartScreen** may say the app comes from an unknown publisher: the builds are not code-signed, because a certificate costs money every year. Check the file as described below, then click *More info → Run anyway*.
 
@@ -59,7 +61,7 @@ sha256sum -c SHA256SUMS --ignore-missing
 gh attestation verify <file> --repo <owner>/rust-skin-stacker
 ```
 
-`<owner>` is the account in the address of this page. The release notes have the exact command.
+The second command needs the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`. `<owner>` is the account in the address of this page. The release notes have the exact command.
 
 ## How a run works
 
@@ -80,7 +82,9 @@ npm run tauri build
 
 Installers appear in `src-tauri/target/release/bundle/`.
 
-For development, `npm run tauri dev` opens the app, and `npm run dev` opens the window in a regular browser in demo mode with made-up data. Tests: `npm test` and `cargo test --manifest-path src-tauri/Cargo.toml`.
+For development, `npm run tauri dev` opens the app. `npm run dev` serves the window at http://localhost:1420 for a regular browser, with made-up data instead of Steam; it does not open the browser itself. Demo states: `?demo=main`, `?demo=item`, `?demo=plan`.
+
+Tests: `npm test`, then `npm run build` and `cargo test --manifest-path src-tauri/Cargo.toml` — the Rust tests need the built `dist/` folder.
 
 ## License
 
