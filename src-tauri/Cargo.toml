@@ -25,7 +25,7 @@ base64 = "0.23.1"
 regex = "1"
 url = "2.5.8"
 reqwest = "0.13.5"
-tokio = { version = "1.54.1", features = ["time", "sync"] }
+tokio = { version = "1.54.1", features = ["macros", "time", "sync"] }
 
 [dev-dependencies]
 wiremock = "0.6.5"
