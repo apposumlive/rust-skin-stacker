@@ -2,7 +2,7 @@
 
 import { closePanel, copyJournal, loadInventory, runPlan, stopRun } from '../actions';
 import { h, icon } from '../dom';
-import { estimateSeconds, fmtDuration, fmtInt } from '../format';
+import { estimateSeconds, fmtDuration, fmtInt, remainingSeconds } from '../format';
 import { t, tn } from '../i18n';
 import { totals } from '../model';
 import type { Panel, State } from '../store';
@@ -30,6 +30,7 @@ export function planView(plan: Plan, changed: boolean, state: State): HTMLElemen
       'div',
       { class: 'panel plan' },
       h('h2', { class: 'plan-h' }, title(operation)),
+      changed ? h('p', { class: 'note' }, icon('refresh'), t('plan.changed')) : null,
       h('p', { class: 'note ok' }, icon('circle-check'), t(isSplit(operation) ? 'plan.nothingSplit' : 'plan.nothingCombine')),
       h('div', { class: 'grow' }),
       h('button', { class: 'btn sec wide', type: 'button', onclick: closePanel }, t('plan.close')),
@@ -74,47 +75,89 @@ export function planView(plan: Plan, changed: boolean, state: State): HTMLElemen
   );
 }
 
-export function runningView(
-  panel: Extract<Panel, { kind: 'running' }>,
-  state: State,
-  tick: (fn: () => void) => void,
-): HTMLElement {
-  const name = panel.key ? (skinsByKey(state).get(panel.key)?.name ?? panel.key) : '';
-  const fill = h('div', { class: 'fill' });
-  fill.style.width = `${panel.total ? Math.round((panel.done / panel.total) * 100) : 100}%`;
-  const wait = h('p', { class: 'wait num', role: 'status' });
-  if (panel.waitUntil) {
-    const until = panel.waitUntil;
-    const show = () => {
-      wait.textContent = t('run.waiting', { seconds: Math.max(0, Math.ceil((until - Date.now()) / 1000)) });
-    };
-    show();
-    tick(show);
-  } else {
+type Running = Extract<Panel, { kind: 'running' }>;
+
+/** Части вида «Ход», которые меняются по ходу операции. Сами узлы живут всё время запуска. */
+interface RunningParts {
+  bar: HTMLElement;
+  fill: HTMLElement;
+  progress: HTMLElement;
+  current: HTMLElement;
+  left: HTMLElement;
+  wait: HTMLElement;
+  stop: HTMLButtonElement;
+  stopLabel: HTMLElement;
+}
+
+const runningParts = new WeakMap<HTMLElement, RunningParts>();
+
+/** Строка «Steam попросил подождать»: считает секунды раз в секунду и прячется, когда ожидание кончилось. */
+function paintWait(wait: HTMLElement, until: number | null, tick: (fn: () => void) => void): void {
+  if (until === null) {
     wait.hidden = true;
+    wait.textContent = '';
+    return;
   }
+  const show = () => {
+    const seconds = remainingSeconds(until, Date.now());
+    wait.hidden = seconds <= 0;
+    wait.textContent = seconds > 0 ? t('run.waiting', { seconds: fmtInt(seconds) }) : '';
+  };
+  show();
+  tick(show);
+}
+
+function paintRunning(parts: RunningParts, panel: Running, state: State, tick: (fn: () => void) => void): void {
+  const name = panel.key ? (skinsByKey(state).get(panel.key)?.name ?? panel.key) : '';
   const left = Math.max(0, panel.total - panel.done);
-  return h(
+  parts.fill.style.width = `${panel.total ? Math.round((panel.done / panel.total) * 100) : 100}%`;
+  parts.bar.setAttribute('aria-valuemax', String(panel.total));
+  parts.bar.setAttribute('aria-valuenow', String(panel.done));
+  parts.progress.textContent = t('run.progress', { done: fmtInt(panel.done), total: fmtInt(panel.total), errors: fmtInt(panel.errors) });
+  parts.current.hidden = !name;
+  parts.current.textContent = name ? t('run.current', { name }) : '';
+  parts.left.textContent = t('run.left', { time: fmtDuration(estimateSeconds(left, state.settings.delayMs)) });
+  parts.stop.disabled = panel.stopping;
+  parts.stopLabel.textContent = t(panel.stopping ? 'run.stopping' : 'run.stop');
+  paintWait(parts.wait, panel.waitUntil, tick);
+}
+
+export function runningView(panel: Running, state: State, tick: (fn: () => void) => void): HTMLElement {
+  const fill = h('div', { class: 'fill' });
+  const bar = h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0 }, fill);
+  const progress = h('p', { class: 'num' });
+  const current = h('p', { class: 'muted' });
+  const left = h('p', { class: 'muted num' });
+  const wait = h('p', { class: 'wait num', role: 'status' });
+  const stopLabel = h('span', {});
+  const stop = h('button', { class: 'btn danger wide', type: 'button', onclick: stopRun }, icon('player-stop'), stopLabel);
+  const el = h(
     'div',
     { class: 'panel run-view' },
     h('h2', { class: 'plan-h' }, t('run.title', { op: title(panel.plan.operation) })),
-    h(
-      'div',
-      { class: 'progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': panel.total, 'aria-valuenow': panel.done },
-      fill,
-    ),
-    h('p', { class: 'num' }, t('run.progress', { done: fmtInt(panel.done), total: fmtInt(panel.total), errors: fmtInt(panel.errors) })),
-    name ? h('p', { class: 'muted' }, t('run.current', { name })) : null,
-    h('p', { class: 'muted num' }, t('run.left', { time: fmtDuration(estimateSeconds(left, state.settings.delayMs)) })),
+    bar,
+    progress,
+    current,
+    left,
     wait,
     h('p', { class: 'foot' }, t('run.browse')),
-    h(
-      'button',
-      { class: 'btn danger wide', type: 'button', disabled: panel.stopping, onclick: stopRun },
-      icon('player-stop'),
-      t(panel.stopping ? 'run.stopping' : 'run.stop'),
-    ),
+    stop,
   );
+  const parts: RunningParts = { bar, fill, progress, current, left, wait, stop, stopLabel };
+  runningParts.set(el, parts);
+  paintRunning(parts, panel, state, tick);
+  return el;
+}
+
+/**
+ * Обновляет вид «Ход» на месте: узлы, в том числе «Остановить», остаются теми же, поэтому фокус и клик не теряются.
+ * `false` — это не вид «Ход», его надо собрать заново.
+ */
+export function patchRunning(el: HTMLElement, panel: Running, state: State, tick: (fn: () => void) => void): boolean {
+  const parts = runningParts.get(el);
+  if (!parts) return false;
+  paintRunning(parts, panel, state, tick);
+  return true;
 }
 
 export function resultView(panel: Extract<Panel, { kind: 'result' }>): HTMLElement {

@@ -1,11 +1,11 @@
 // Правая панель, пока операции нет: подсказка, один скин, несколько скинов.
 
 import { clearSelection, showPlan } from '../actions';
-import { api } from '../api';
+import { api, asUiError } from '../api';
 import { h, icon } from '../dom';
 import { estimateSeconds, fmtDate, fmtDuration, fmtInt, iconUrl } from '../format';
-import { t, tn } from '../i18n';
-import { apartRecords, canCombine, counts, hasStack, layoutOf, layoutText, splitCapacity } from '../model';
+import { errorText, t, tn } from '../i18n';
+import { apartRecords, canCombine, clampCount, counts, hasStack, layoutOf, layoutText, splitCapacity } from '../model';
 import type { State } from '../store';
 import type { Inventory, Skin } from '../types';
 
@@ -42,10 +42,17 @@ function fact(label: string, value: HTMLElement): HTMLElement {
   return h('div', {}, h('dt', {}, label), h('dd', {}, value));
 }
 
-/** Блок «Отделить по одному». Строку «Станет: …» считает ядро, поэтому она совпадает с планом. */
+/** Пауза после последнего движения ползунка, после которой считается строка «Станет: …». */
+const PREVIEW_DELAY_MS = 150;
+
+/**
+ * Блок «Отделить по одному». Строку «Станет: …» считает ядро, поэтому она совпадает с планом.
+ * Если отделять можно только одну штуку (`capacity` 1), выбирать не из чего: ползунка и счётчика нет, остаются строка и кнопка.
+ */
 function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTMLElement; button: HTMLButtonElement } {
   let count = 1;
   let seq = 0;
+  let timer = 0;
   const value = h('input', {
     class: 'v num',
     type: 'number',
@@ -67,39 +74,71 @@ function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTM
   const less = h('button', { class: 'b', type: 'button', 'aria-label': t('item.less'), onclick: () => set(count - 1) }, icon('minus'));
   const more = h('button', { class: 'b', type: 'button', 'aria-label': t('item.more'), onclick: () => set(count + 1) }, icon('plus'));
 
-  function set(next: number): void {
-    count = Math.min(capacity, Math.max(1, Math.round(next) || 1));
+  /** Поля и подписи под текущее число. */
+  function paint(): void {
     value.value = String(count);
     range.value = String(count);
     range.style.setProperty('--fill', `${capacity > 1 ? ((count - 1) / (capacity - 1)) * 100 : 100}%`);
     label.textContent = t('item.splitN', { count: fmtInt(count) });
     less.disabled = count <= 1;
     more.disabled = count >= capacity;
+  }
+
+  function say(text: string, failed: boolean): void {
+    preview.textContent = text;
+    preview.classList.toggle('err', failed);
+  }
+
+  /** Спрашивает у ядра, что станет; ответ на прошлое число отбрасывается. */
+  function refresh(): void {
     const mine = ++seq;
     api.preview({ kind: 'splitOff', key: skin.key, count }).then(
       (plan) => {
         const after = plan.after[0];
+        // Строка уже пуста: set() убрал её при смене числа. Пустой ответ ничего к ней не добавляет.
         if (mine !== seq || !after) return;
-        preview.textContent = t('item.result', {
-          layout: layoutText(after.stacks, after.singles, true),
-          requests: tn('plan.requests', plan.requests),
-          time: fmtDuration(estimateSeconds(plan.requests, delayMs)),
-        });
+        say(
+          t('item.result', {
+            layout: layoutText(after.stacks, after.singles, true),
+            requests: tn('plan.requests', plan.requests),
+            time: fmtDuration(estimateSeconds(plan.requests, delayMs)),
+          }),
+          false,
+        );
       },
-      () => {},
+      (e: unknown) => {
+        if (mine !== seq) return;
+        say(errorText(asUiError(e)), true);
+      },
     );
+  }
+
+  function set(next: number): void {
+    const was = count;
+    count = clampCount(next, capacity);
+    paint();
+    if (count === was) return;
+    // Строка от прошлого числа к новому не относится: убираем её и считаем заново, когда движение кончится.
+    seq += 1;
+    say('', false);
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      // Панель могла пересобраться, пока ждали: тогда этот блок уже не на экране.
+      if (section.isConnected) refresh();
+    }, PREVIEW_DELAY_MS);
   }
 
   range.addEventListener('input', () => set(Number(range.value)));
   value.addEventListener('change', () => set(Number(value.value)));
-  set(1);
+  paint();
+  refresh();
 
   const section = h(
     'section',
     { class: 'sec' },
-    h('div', { class: 'sec-h' }, h('span', {}, t('item.splitOff')), h('span', { class: 'amt' }, less, value, more)),
-    range,
-    h('div', { class: 'ticks num' }, h('span', {}, '1'), h('span', {}, fmtInt(capacity))),
+    h('div', { class: 'sec-h' }, h('span', {}, t('item.splitOff')), capacity > 1 ? h('span', { class: 'amt' }, less, value, more) : null),
+    capacity > 1 ? range : null,
+    capacity > 1 ? h('div', { class: 'ticks num' }, h('span', {}, '1'), h('span', {}, fmtInt(capacity))) : null,
     preview,
   );
   return { section, button };

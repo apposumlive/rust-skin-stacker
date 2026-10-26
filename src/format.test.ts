@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from './i18n';
-import { estimateSeconds, fmtDuration, fmtInt, fmtSeconds, fmtTimeLeft, iconUrl } from './format';
+import { estimateSeconds, fmtDuration, fmtInt, fmtSeconds, fmtTimeLeft, iconUrl, remainingSeconds } from './format';
 
 describe('format', () => {
   beforeEach(() => setLang('ru'));
@@ -39,5 +39,17 @@ describe('format', () => {
     setLang('en');
     expect(fmtSeconds(1500)).toBe('1.5');
     expect(fmtSeconds(2000)).toBe('2');
+  });
+
+  it('counts the seconds left until the end of a wait', () => {
+    const now = 1_700_000_000_000;
+    expect(remainingSeconds(now + 30_000, now)).toBe(30);
+    expect(remainingSeconds(now + 29_001, now)).toBe(30);
+    expect(remainingSeconds(now + 29_000, now)).toBe(29);
+    expect(remainingSeconds(now + 1, now)).toBe(1);
+    expect(remainingSeconds(now, now)).toBe(0);
+    expect(remainingSeconds(now - 1, now)).toBe(0);
+    expect(remainingSeconds(now - 60_000, now)).toBe(0);
+    expect(remainingSeconds(Number.NaN, now)).toBe(0);
   });
 });

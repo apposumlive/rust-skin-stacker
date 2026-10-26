@@ -1,20 +1,13 @@
 // Правая панель. Перерисовывается только при смене того, что в ней показано:
-// иначе ввод в поиске сбрасывал бы ползунок «Отделить по одному».
+// иначе ввод в поиске сбрасывал бы ползунок «Отделить по одному». Ход операции правится на месте (panel-diff.ts).
 
 import { h } from '../dom';
-import type { Panel, State } from '../store';
-import type { Inventory, Skin } from '../types';
-import { planView, resultView, runningView } from './panel-run';
+import type { State } from '../store';
+import type { Skin } from '../types';
+import { entering, panelStep, shownOf, type Shown } from './panel-diff';
+import { patchRunning, planView, resultView, runningView } from './panel-run';
 import { hintView, itemView, multiView } from './panel-select';
 import type { Part } from './shell';
-
-interface Shown {
-  panel: Panel;
-  selected: string[];
-  inventory: Inventory | null;
-  delay: number;
-  loading: boolean;
-}
 
 function view(state: State, tick: (fn: () => void) => void): HTMLElement {
   const inventory = state.inventory;
@@ -50,17 +43,18 @@ export function createPanel(el: HTMLElement): Part {
   };
   return {
     update(state) {
-      const next: Shown = {
-        panel: state.panel,
-        selected: state.selected,
-        inventory: state.inventory,
-        delay: state.settings.delayMs,
-        loading: state.loading,
-      };
-      if (shown && (Object.keys(next) as (keyof Shown)[]).every((k) => shown![k] === next[k])) return;
+      const next = shownOf(state);
+      const step = panelStep(shown, next);
+      const enter = entering(shown, next);
       shown = next;
+      if (step === 'keep') return;
       stopTimer();
-      el.replaceChildren(view(state, tick));
+      // Ход правится на месте: «Остановить» остаётся тем же узлом и не теряет фокус и клик.
+      const current = el.firstElementChild;
+      if (step === 'patch' && state.panel.kind === 'running' && current instanceof HTMLElement && patchRunning(current, state.panel, state, tick)) return;
+      const fresh = view(state, tick);
+      if (enter) fresh.classList.add('enter');
+      el.replaceChildren(fresh);
     },
     destroy: stopTimer,
   };
