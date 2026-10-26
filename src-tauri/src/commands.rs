@@ -274,6 +274,17 @@ impl AppState {
             outcome.reason, outcome.done, outcome.errors
         ));
 
+        // «Забыть токен» во время запуска: токен больше не используем, сессию не трогаем.
+        if self.session.lock().await.token.is_none() {
+            self.journal
+                .add("token forgotten during the run, check skipped");
+            return Ok(StartResult::Finished {
+                outcome,
+                reconciliation: None,
+                inventory: None,
+            });
+        }
+
         // Правило 7: сверка по свежему чтению инвентаря.
         match self.read_inventory(&token, lang).await {
             Ok(after) => {
@@ -393,9 +404,11 @@ pub fn journal(state: State<'_, AppState>) -> String {
 mod tests {
     use super::*;
     use crate::runner::StopReason;
+    use crate::settings::{MAX_DELAY_MS, MIN_DELAY_MS};
     use crate::steam::recording_sleep;
     use crate::token::test_token;
     use serde_json::json;
+    use std::sync::Arc;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -412,18 +425,90 @@ mod tests {
         }}))
     }
 
-    fn state_for(server: &MockServer) -> AppState {
-        let (sleep, _) = recording_sleep();
-        AppState::new(
+    type SleepLog = Arc<Mutex<Vec<Duration>>>;
+
+    /// Состояние на поддельном Steam и журнал пауз, которые просил выполнить код.
+    fn state_with(server: &MockServer, settings: Settings) -> (AppState, SleepLog) {
+        let (sleep, slept) = recording_sleep();
+        let state = AppState::new(
             SteamClient::new(&server.uri(), sleep.clone()),
             sleep,
-            Settings::default(),
+            settings,
             None,
-        )
+        );
+        (state, slept)
+    }
+
+    fn state_for(server: &MockServer) -> AppState {
+        state_with(server, Settings::default()).0
     }
 
     async fn with_token(state: &AppState) {
         state.session.lock().await.token = Some(test_token());
+    }
+
+    /// Токен с инвентарём и предпросмотренным планом «разделить всё».
+    async fn previewed(server: &MockServer, settings: Settings) -> (AppState, SleepLog) {
+        let (state, slept) = state_with(server, settings);
+        with_token(&state).await;
+        state.load_inventory("en", NOW).await.unwrap();
+        state.preview(Operation::SplitAll).await.unwrap();
+        (state, slept)
+    }
+
+    async fn mount_inventory(server: &MockServer, amount: u32) {
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(amount))
+            .mount(server)
+            .await;
+    }
+
+    fn split_reply() -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(json!({"response": {}}))
+    }
+
+    async fn requests_to(server: &MockServer, http_method: &str) -> usize {
+        let requests = server.received_requests().await.unwrap_or_default();
+        requests
+            .iter()
+            .filter(|r| r.method.as_str() == http_method)
+            .count()
+    }
+
+    /// Ждёт, пока до поддельного Steam дойдёт нужное число запросов.
+    /// Ответ на последний из них ещё может быть в пути: так ловим момент «посреди запроса».
+    async fn wait_for_requests(server: &MockServer, http_method: &str, count: usize) {
+        let wait = async {
+            while requests_to(server, http_method).await < count {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(10), wait)
+            .await
+            .expect("the request never reached the fake Steam");
+    }
+
+    fn assert_idle(state: &AppState) {
+        assert!(
+            !state.running.load(Ordering::SeqCst),
+            "the running flag is still set"
+        );
+    }
+
+    /// Годный токен в виде текста для вставки: заголовок, полезная нагрузка и подпись.
+    fn raw_token() -> String {
+        use base64::Engine;
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let payload = format!(
+            r#"{{"iss":"r:0","sub":"76561190000000001","aud":["web"],"exp":{}}}"#,
+            NOW + 3600
+        );
+        format!(
+            "{}.{}.c2ln",
+            URL_SAFE_NO_PAD.encode(r#"{"alg":"EdDSA","typ":"JWT"}"#),
+            URL_SAFE_NO_PAD.encode(payload)
+        )
     }
 
     #[test]
@@ -646,5 +731,328 @@ mod tests {
         );
         assert_eq!(state.settings(), saved);
         assert_eq!(crate::settings::load(&path), saved);
+    }
+
+    #[tokio::test]
+    async fn new_state_clamps_settings_from_the_file() {
+        let server = MockServer::start().await;
+        let (state, _) = state_with(
+            &server,
+            Settings {
+                language: None,
+                delay_ms: 60_000,
+            },
+        );
+        assert_eq!(state.settings().delay_ms, MAX_DELAY_MS);
+        let (state, _) = state_with(
+            &server,
+            Settings {
+                language: None,
+                delay_ms: 1,
+            },
+        );
+        assert_eq!(state.settings().delay_ms, MIN_DELAY_MS);
+    }
+
+    #[tokio::test]
+    async fn running_flag_is_cleared_without_a_token() {
+        let server = MockServer::start().await;
+        let state = state_for(&server);
+        let err = state
+            .start(Operation::SplitAll, "en", NOW, |_| {})
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "noToken");
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn running_flag_is_cleared_with_an_expired_token() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(inventory_reply(3))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let state = state_for(&server);
+        let mut token = test_token();
+        token.expires_at = NOW - 1;
+        state.session.lock().await.token = Some(token);
+        let err = state
+            .start(Operation::SplitAll, "en", NOW, |_| {})
+            .await
+            .unwrap_err();
+        assert_eq!(err.code, "tokenExpired");
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn running_flag_is_cleared_after_a_failed_pre_run_read() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(0)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+        let err = state
+            .start(Operation::SplitAll, "en", NOW, |_| {})
+            .await
+            .unwrap_err();
+        assert_eq!(
+            err,
+            UiError {
+                code: "http",
+                status: Some(500)
+            }
+        );
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn running_flag_is_cleared_after_a_finished_run() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 3).await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+        let result = state
+            .start(Operation::SplitAll, "en", NOW, |_| {})
+            .await
+            .unwrap();
+        assert!(matches!(result, StartResult::Finished { .. }), "{result:?}");
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn set_token_accepts_a_valid_token_when_idle() {
+        let server = MockServer::start().await;
+        let state = state_for(&server);
+        let info = state.set_token(&raw_token(), NOW).await.unwrap();
+        assert_eq!(info.steamid_masked, "7656…0001");
+        assert!(state.session.lock().await.token.is_some());
+    }
+
+    #[tokio::test]
+    async fn set_token_while_running_is_busy_and_keeps_the_session() {
+        let server = MockServer::start().await;
+        let state = state_for(&server);
+        with_token(&state).await;
+        state.running.store(true, Ordering::SeqCst);
+        let err = state.set_token(&raw_token(), NOW).await.unwrap_err();
+        assert_eq!(err.code, "busy");
+        assert_eq!(state.session.lock().await.token, Some(test_token()));
+    }
+
+    #[tokio::test]
+    async fn stop_pressed_during_the_pre_run_read_is_honoured() {
+        let server = MockServer::start().await;
+        // Первое чтение (загрузка) быстрое, второе (перед запуском) медленное.
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3).set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(0)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, ()) =
+            tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
+                wait_for_requests(&server, "GET", 2).await;
+                state.stop();
+            });
+        let StartResult::Finished { outcome, .. } = result.unwrap() else {
+            panic!("expected Finished");
+        };
+        assert_eq!(outcome.reason, StopReason::StoppedByUser);
+        assert_eq!(outcome.done, 0);
+        assert_eq!(requests_to(&server, "POST").await, 0);
+    }
+
+    #[tokio::test]
+    async fn an_old_stop_does_not_block_the_next_run() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 3).await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(2)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+        // «Остановить» нажали, когда ничего не шло.
+        state.stop();
+        let result = state
+            .start(Operation::SplitAll, "en", NOW, |_| {})
+            .await
+            .unwrap();
+        let StartResult::Finished { outcome, .. } = result else {
+            panic!("expected Finished, got {result:?}");
+        };
+        assert_eq!(outcome.reason, StopReason::Finished);
+        assert_eq!(outcome.done, 2);
+    }
+
+    #[tokio::test]
+    async fn stop_during_a_run_stops_after_the_current_request() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 4).await; // три разделения
+        Mock::given(method("POST"))
+            .respond_with(split_reply().set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, ()) =
+            tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
+                wait_for_requests(&server, "POST", 1).await;
+                state.stop();
+            });
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            ..
+        } = result.unwrap()
+        else {
+            panic!("expected Finished");
+        };
+        assert_eq!(outcome.reason, StopReason::StoppedByUser);
+        assert_eq!((outcome.done, outcome.total), (1, 3));
+        assert_eq!(requests_to(&server, "POST").await, 1);
+        // Сверка после остановки всё равно делается.
+        assert!(reconciliation.is_some());
+        assert!(state.journal_text().contains("stop requested"));
+    }
+
+    #[tokio::test]
+    async fn forgetting_the_token_during_a_run_stops_all_use_of_it() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 3).await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply().set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+        assert_eq!(requests_to(&server, "GET").await, 1); // чтение при загрузке
+
+        let (result, ()) =
+            tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
+                wait_for_requests(&server, "POST", 1).await;
+                state.forget_token().await;
+            });
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            inventory,
+        } = result.unwrap()
+        else {
+            panic!("expected Finished");
+        };
+        assert_eq!(outcome.reason, StopReason::StoppedByUser);
+        assert_eq!(outcome.done, 1);
+        assert!(reconciliation.is_none());
+        assert!(inventory.is_none());
+        // Ещё одно чтение — только перед запуском; после «Забыть токен» запросов с токеном нет.
+        assert_eq!(requests_to(&server, "GET").await, 2);
+        assert_eq!(requests_to(&server, "POST").await, 1);
+        {
+            let session = state.session.lock().await;
+            assert!(session.token.is_none());
+            assert!(session.inventory.is_none());
+        }
+        assert!(
+            state
+                .journal_text()
+                .contains("token forgotten during the run, check skipped")
+        );
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn failed_post_run_read_still_finishes_without_a_check() {
+        let server = MockServer::start().await;
+        // Загрузка и чтение перед запуском проходят, чтение после запуска — нет.
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(2)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+        let result = state
+            .start(Operation::SplitAll, "en", NOW, |_| {})
+            .await
+            .unwrap();
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            inventory,
+        } = result
+        else {
+            panic!("expected Finished, got {result:?}");
+        };
+        assert_eq!(outcome.reason, StopReason::Finished);
+        assert_eq!(outcome.done, 2);
+        assert!(reconciliation.is_none());
+        assert!(inventory.is_none());
+        assert!(state.journal_text().contains("inventory read failed"));
+    }
+
+    #[tokio::test]
+    async fn configured_delay_is_the_pause_between_requests() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 3).await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(2)
+            .mount(&server)
+            .await;
+        let (state, slept) = previewed(
+            &server,
+            Settings {
+                language: None,
+                delay_ms: 700,
+            },
+        )
+        .await;
+        let result = state
+            .start(Operation::SplitAll, "en", NOW, |_| {})
+            .await
+            .unwrap();
+        assert!(matches!(result, StartResult::Finished { .. }), "{result:?}");
+        // Два запроса — одна пауза между ними, и она равна настройке.
+        assert_eq!(*slept.lock().unwrap(), vec![Duration::from_millis(700)]);
     }
 }

@@ -122,6 +122,30 @@ mod tests {
     }
 
     #[test]
+    fn load_clamps_values_from_the_file() {
+        let path = temp_file("clamp-low");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, br#"{"language":"de","delayMs":100}"#).unwrap();
+        assert_eq!(
+            load(&path),
+            Settings {
+                language: None,
+                delay_ms: MIN_DELAY_MS
+            }
+        );
+        let path = temp_file("clamp-high");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, br#"{"language":"ru","delayMs":60000}"#).unwrap();
+        assert_eq!(
+            load(&path),
+            Settings {
+                language: Some("ru".into()),
+                delay_ms: MAX_DELAY_MS
+            }
+        );
+    }
+
+    #[test]
     fn save_then_load_round_trips() {
         let path = temp_file("roundtrip");
         let s = Settings {
