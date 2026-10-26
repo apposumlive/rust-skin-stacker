@@ -98,7 +98,9 @@ pub fn build(inventory: &Inventory, operation: &Operation) -> Plan {
                 .is_none_or(|keys| keys.contains(s.key.as_str()))
         })
         .collect();
-    skins.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.name.cmp(&b.name)));
+    // При равном total — по ключу, а не по имени: имя зависит от языка, и смена языка
+    // между предпросмотром и запуском дала бы другой порядок шагов.
+    skins.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.key.cmp(&b.key)));
 
     let (mut steps, mut queue, mut after) = (Vec::new(), Vec::new(), Vec::new());
     for skin in skins {
@@ -521,16 +523,40 @@ mod tests {
         assert_eq!(plan.more, 2);
     }
 
+    /// Скин с локализованным именем, которое идёт в другом порядке, чем ключ.
+    fn named(key: &str, name: &str, records: Vec<Record>) -> Skin {
+        Skin {
+            name: name.into(),
+            ..skin(key, records)
+        }
+    }
+
     #[test]
-    fn skins_go_by_total_then_name() {
+    fn skins_go_by_total_then_key() {
         let inventory = inv(vec![
-            skin("B", vec![rec("1", "0", 2)]),
-            skin("A", vec![rec("2", "0", 2)]),
-            skin("C", vec![rec("3", "0", 5)]),
+            named("B", "Альфа", vec![rec("1", "0", 2)]),
+            named("A", "Яблоко", vec![rec("2", "0", 2)]),
+            named("C", "Бета", vec![rec("3", "0", 5)]),
         ]);
         let plan = build(&inventory, &Operation::SplitAll);
         let keys: Vec<&str> = plan.after.iter().map(|a| a.key.as_str()).collect();
         assert_eq!(keys, vec!["C", "A", "B"]);
+    }
+
+    #[test]
+    fn plan_steps_do_not_depend_on_the_language() {
+        let english = inv(vec![
+            named("B", "Alpha", vec![rec("1", "0", 2)]),
+            named("A", "Zulu", vec![rec("2", "0", 2)]),
+        ]);
+        let russian = inv(vec![
+            named("B", "Яблоко", vec![rec("1", "0", 2)]),
+            named("A", "Альфа", vec![rec("2", "0", 2)]),
+        ]);
+        assert_eq!(
+            build(&english, &Operation::SplitAll).steps,
+            build(&russian, &Operation::SplitAll).steps
+        );
     }
 
     #[test]

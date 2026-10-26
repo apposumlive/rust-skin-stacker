@@ -26,12 +26,23 @@ impl fmt::Debug for Secret {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Token {
     pub secret: Secret,
     pub steamid: String,
     /// Unix-время окончания, секунды.
     pub expires_at: i64,
+}
+
+/// Debug без секрета и полного SteamID: только сокращённый, как в журнале.
+impl fmt::Debug for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Token")
+            .field("secret", &self.secret)
+            .field("steamid", &mask_steamid(&self.steamid))
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 /// То, что видит окно: сокращённый SteamID и срок.
@@ -268,6 +279,9 @@ mod tests {
         let shown = format!("{token:?}");
         assert!(!shown.contains(token.secret.expose()));
         assert!(shown.contains("***"));
+        // Полного SteamID в Debug нет, только сокращённый.
+        assert!(!shown.contains(ID), "{shown}");
+        assert!(shown.contains("7656…0001"), "{shown}");
     }
 
     #[test]
@@ -299,7 +313,9 @@ mod tests {
     #[test]
     fn test_token_hides_its_value() {
         let token = test_token();
-        assert!(!format!("{token:?}").contains("tok-SECRET"));
+        let shown = format!("{token:?}");
+        assert!(!shown.contains("tok-SECRET"), "{shown}");
+        assert!(!shown.contains(ID), "{shown}");
         assert!(!token.is_expired(NOW));
     }
 }

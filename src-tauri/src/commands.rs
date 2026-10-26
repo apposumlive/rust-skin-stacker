@@ -3,8 +3,8 @@
 
 use std::path::PathBuf;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, State};
 use crate::inventory::{self, Inventory, Reconciliation};
 use crate::journal::Journal;
 use crate::plan::{self, Operation, Plan};
-use crate::runner::{self, Progress, RunConfig, RunOutcome, SteamStacker};
+use crate::runner::{self, Progress, RunConfig, RunOutcome, SteamStacker, StopReason};
 use crate::settings::{self, Settings};
 use crate::steam::{SleepFn, SteamClient, SteamError};
 use crate::token::{self, Token, TokenError, TokenInfo};
@@ -98,12 +98,14 @@ pub struct AppState {
     client: SteamClient,
     sleep: SleepFn,
     session: tokio::sync::Mutex<Session>,
-    /// Сигнал «токен забыт»: обрывает чтение инвентаря, которое уже идёт.
+    /// Сигнал «токен забыт или заменён»: обрывает чтение инвентаря, которое уже идёт.
     forgotten: tokio::sync::Notify,
     stop: AtomicBool,
     running: AtomicBool,
     journal: Journal,
     settings: Mutex<Settings>,
+    /// Пауза из настроек, мс. Раннер читает её перед каждой паузой.
+    delay_ms: AtomicU64,
     settings_path: Option<PathBuf>,
 }
 
@@ -125,6 +127,14 @@ impl AppState {
         settings: Settings,
         settings_path: Option<PathBuf>,
     ) -> Self {
+        let settings = settings.normalized();
+        let journal = Journal::default();
+        // Первая строка журнала — версия: её просит шаблон issue.
+        journal.add(format!(
+            "Rust Skin Stacker {} on {}",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS
+        ));
         Self {
             client,
             sleep,
@@ -132,8 +142,9 @@ impl AppState {
             forgotten: tokio::sync::Notify::new(),
             stop: AtomicBool::new(false),
             running: AtomicBool::new(false),
-            journal: Journal::default(),
-            settings: Mutex::new(settings.normalized()),
+            journal,
+            delay_ms: AtomicU64::new(u64::from(settings.delay_ms)),
+            settings: Mutex::new(settings),
             settings_path,
         }
     }
@@ -148,17 +159,42 @@ impl AppState {
             token: Some(token),
             ..Session::default()
         };
+        // Чтение со старым токеном бросаем, как при «Забыть токен».
+        self.forgotten.notify_waiters();
         self.journal
             .add(format!("token accepted for {}", info.steamid_masked));
         Ok(info)
     }
 
     pub async fn forget_token(&self) {
+        self.drop_session(&mut *self.session.lock().await);
+        self.journal.add("token forgotten");
+    }
+
+    /// Окно перезагрузили (F5, «Обновить»): новое окно не знает ни токена, ни запуска,
+    /// и «Остановить» в нём нет. Сбрасываем всё, как «Забыть токен», но только если есть что
+    /// сбрасывать: при первой загрузке журнал не засоряем.
+    pub async fn reset_on_page_load(&self) {
+        let mut session = self.session.lock().await;
+        let running = self.running.load(Ordering::SeqCst);
+        if session.token.is_none() && !running {
+            return;
+        }
+        self.drop_session(&mut session);
+        drop(session);
+        self.journal.add(if running {
+            "page reloaded: token forgotten, run stopped after the current request"
+        } else {
+            "page reloaded: token forgotten"
+        });
+    }
+
+    /// Останавливает запуск, очищает сессию и обрывает чтение в пути. Сессия уже под замком.
+    fn drop_session(&self, session: &mut Session) {
         self.stop.store(true, Ordering::SeqCst);
-        *self.session.lock().await = Session::default();
+        *session = Session::default();
         // Чтение инвентаря в пути бросаем: ни страниц, ни повторов с забытым токеном.
         self.forgotten.notify_waiters();
-        self.journal.add("token forgotten");
     }
 
     async fn token(&self, now: i64) -> Result<Token, UiError> {
@@ -289,17 +325,13 @@ impl AppState {
             });
         }
 
-        let delay_ms = self
-            .settings
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .delay_ms;
         let config = RunConfig {
-            delay: Duration::from_millis(u64::from(delay_ms)),
+            delay_ms: &self.delay_ms,
         };
         self.journal.add(format!(
-            "start: {} requests, pause {delay_ms} ms",
-            plan.requests
+            "start: {} requests, pause {} ms",
+            plan.requests,
+            self.delay_ms.load(Ordering::SeqCst)
         ));
         let api = SteamStacker {
             client: self.client.clone(),
@@ -323,6 +355,15 @@ impl AppState {
         // «Забыть токен» во время запуска: токен больше не используем, сессию не трогаем.
         if !self.session.lock().await.holds(&token) {
             return Ok(self.check_skipped(outcome));
+        }
+        // Steam отказал токену: чтение с ним тоже получит 401/403, не шлём его.
+        if outcome.reason == StopReason::TokenRejected {
+            self.journal.add("the token was rejected, check skipped");
+            return Ok(StartResult::Finished {
+                outcome,
+                reconciliation: None,
+                inventory: None,
+            });
         }
 
         // Правило 7: сверка по свежему чтению инвентаря.
@@ -386,6 +427,13 @@ impl AppState {
             settings::save(path, &settings).map_err(|_| UiError::new("settingsNotSaved"))?;
         }
         *self.settings.lock().unwrap_or_else(|e| e.into_inner()) = settings.clone();
+        // Идущий запуск возьмёт новую паузу со следующей паузы между запросами.
+        let delay_ms = u64::from(settings.delay_ms);
+        let old = self.delay_ms.swap(delay_ms, Ordering::SeqCst);
+        if old != delay_ms && self.running.load(Ordering::SeqCst) {
+            self.journal
+                .add(format!("pause changed during the run: {delay_ms} ms"));
+        }
         Ok(settings)
     }
 
@@ -455,12 +503,12 @@ pub fn journal(state: State<'_, AppState>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runner::StopReason;
     use crate::settings::{MAX_DELAY_MS, MIN_DELAY_MS};
     use crate::steam::recording_sleep;
     use crate::token::test_token;
     use serde_json::json;
     use std::sync::Arc;
+    use std::time::Duration;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -1062,6 +1110,16 @@ mod tests {
         *state.session.lock().await = Session::default();
     }
 
+    /// Другой токен в сессии без сигнала: как вставка сразу после конца чтения,
+    /// но до записи в сессию.
+    async fn replace_token_silently(state: &AppState) {
+        let other = token::parse_token(&raw_token(), NOW).unwrap();
+        *state.session.lock().await = Session {
+            token: Some(other),
+            ..Session::default()
+        };
+    }
+
     #[tokio::test]
     async fn reading_with_a_token_that_is_not_in_the_session_sends_nothing() {
         let server = MockServer::start().await;
@@ -1116,12 +1174,11 @@ mod tests {
         let state = state_for(&server);
         with_token(&state).await;
 
-        // Вставили другой токен, пока читался инвентарь первого: чтение никто не обрывал.
-        let (result, info) = tokio::join!(state.load_inventory("en", NOW), async {
+        // Другой токен в сессии, пока читался инвентарь первого: чтение никто не обрывал.
+        let (result, ()) = tokio::join!(state.load_inventory("en", NOW), async {
             wait_for_requests(&server, "GET", 1).await;
-            state.set_token(&raw_token(), NOW).await
+            replace_token_silently(&state).await;
         });
-        info.unwrap();
         assert_eq!(result.unwrap_err().code, "noToken");
         {
             let session = state.session.lock().await;
@@ -1375,5 +1432,192 @@ mod tests {
         assert!(matches!(result, StartResult::Finished { .. }), "{result:?}");
         // Два запроса — одна пауза между ними, и она равна настройке.
         assert_eq!(*slept.lock().unwrap(), vec![Duration::from_millis(700)]);
+    }
+
+    /// Паузу сохранили в настройках во время второго запроса: вторая пауза уже новая.
+    #[tokio::test]
+    async fn pause_saved_during_a_run_applies_from_the_next_pause() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 4).await; // три разделения — две паузы
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(3)
+            .mount(&server)
+            .await;
+        let (state, slept) = previewed(
+            &server,
+            Settings {
+                language: None,
+                delay_ms: 700,
+            },
+        )
+        .await;
+        let result = state
+            .start(Operation::SplitAll, "en", NOW, |p| {
+                if matches!(p, Progress::Request { done: 1, .. }) {
+                    state
+                        .save_settings(Settings {
+                            language: None,
+                            delay_ms: 2000,
+                        })
+                        .unwrap();
+                }
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, StartResult::Finished { .. }), "{result:?}");
+        assert_eq!(
+            *slept.lock().unwrap(),
+            vec![Duration::from_millis(700), Duration::from_millis(2000)]
+        );
+        assert!(
+            state
+                .journal_text()
+                .contains("pause changed during the run: 2000 ms")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejected_token_skips_the_post_run_read() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 3).await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(401))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+        let result = state
+            .start(Operation::SplitAll, "en", NOW, |_| {})
+            .await
+            .unwrap();
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            inventory,
+        } = result
+        else {
+            panic!("expected Finished, got {result:?}");
+        };
+        assert_eq!(outcome.reason, StopReason::TokenRejected);
+        assert!(reconciliation.is_none());
+        assert!(inventory.is_none());
+        // Чтение при загрузке и перед запуском; после отказа токена чтения нет.
+        assert_eq!(requests_to(&server, "GET").await, 2);
+        assert!(
+            state
+                .journal_text()
+                .contains("the token was rejected, check skipped")
+        );
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn replacing_the_token_drops_the_inventory_read_in_flight() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(paged_reply(3).set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        let state = state_for(&server);
+        with_token(&state).await;
+
+        // Новый токен посреди чтения первой страницы, без «Забыть».
+        let (result, info) = tokio::join!(state.load_inventory("en", NOW), async {
+            wait_for_requests(&server, "GET", 1).await;
+            state.set_token(&raw_token(), NOW).await
+        });
+        info.unwrap();
+        assert_eq!(result.unwrap_err().code, "noToken");
+        // Вторую страницу старым токеном не просили.
+        assert_eq!(requests_to(&server, "GET").await, 1);
+        let session = state.session.lock().await;
+        assert_ne!(session.token, Some(test_token()));
+        assert!(session.inventory.is_none());
+    }
+
+    #[tokio::test]
+    async fn journal_starts_with_the_app_version() {
+        let server = MockServer::start().await;
+        let state = state_for(&server);
+        state.journal.add("later line");
+        let text = state.journal_text();
+        let first = text.lines().next().unwrap_or_default();
+        let expected = format!(
+            "Rust Skin Stacker {} on {}",
+            env!("CARGO_PKG_VERSION"),
+            std::env::consts::OS
+        );
+        assert!(first.ends_with(&expected), "{text}");
+    }
+
+    #[tokio::test]
+    async fn page_reload_during_a_run_stops_it_and_forgets_the_token() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 4).await; // три разделения
+        Mock::given(method("POST"))
+            .respond_with(split_reply().set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, ()) =
+            tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
+                wait_for_requests(&server, "POST", 1).await;
+                state.reset_on_page_load().await;
+            });
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            inventory,
+        } = result.unwrap()
+        else {
+            panic!("expected Finished");
+        };
+        // Текущий запрос дошёл до конца, новых с этим токеном нет.
+        assert_eq!(outcome.reason, StopReason::StoppedByUser);
+        assert_eq!((outcome.done, outcome.total), (1, 3));
+        assert_eq!(requests_to(&server, "POST").await, 1);
+        assert_eq!(requests_to(&server, "GET").await, 2);
+        assert!(reconciliation.is_none());
+        assert!(inventory.is_none());
+        assert!(state.session.lock().await.token.is_none());
+        assert!(
+            state
+                .journal_text()
+                .contains("page reloaded: token forgotten, run stopped after the current request")
+        );
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn page_reload_with_a_token_forgets_it() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 3).await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+        state.reset_on_page_load().await;
+        {
+            let session = state.session.lock().await;
+            assert!(session.token.is_none());
+            assert!(session.inventory.is_none());
+            assert!(session.last_plan.is_none());
+        }
+        assert!(
+            state
+                .journal_text()
+                .contains("page reloaded: token forgotten")
+        );
+    }
+
+    #[tokio::test]
+    async fn first_page_load_with_an_empty_session_does_nothing() {
+        let server = MockServer::start().await;
+        let state = state_for(&server);
+        let before = state.journal_text();
+        state.reset_on_page_load().await;
+        assert_eq!(state.journal_text(), before);
+        assert!(!state.journal_text().contains("page reloaded"));
+        assert!(!state.stop.load(Ordering::SeqCst));
     }
 }
