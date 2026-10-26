@@ -1,4 +1,5 @@
 pub mod inventory;
+pub mod plan;
 pub mod steam;
 pub mod token;
 
