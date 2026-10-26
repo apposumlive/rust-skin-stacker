@@ -395,6 +395,26 @@ mod tests {
     }
 
     #[test]
+    fn equal_amounts_are_ordered_by_numeric_assetid() {
+        // Входной порядок перемешан: без tie-break останется он, а строковое
+        // сравнение поставит "10000000000" раньше "1001" и "9999999999".
+        let inv = parse_pages(&[page(
+            vec![
+                asset("9999999999", "c1", "0", "1"),
+                asset("10000000000", "c1", "0", "1"),
+                asset("1001", "c1", "0", "1"),
+            ],
+            vec![desc("c1", "0", "Outlaw Revolver")],
+        )]);
+        let ids: Vec<&str> = one_skin(&inv)
+            .records
+            .iter()
+            .map(|r| r.assetid.as_str())
+            .collect();
+        assert_eq!(ids, vec!["1001", "9999999999", "10000000000"]);
+    }
+
+    #[test]
     fn reads_description_fields() {
         let inv = parse_pages(&[page(
             vec![asset("1001", "c1", "0", "2")],
