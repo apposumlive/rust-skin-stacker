@@ -9,3 +9,9 @@ dist/
 .impeccable/review/
 .impeccable/mocks/
 .impeccable/config.local.json
+
+# Tauri: сгенерированные схемы прав
+src-tauri/gen/
+
+# Рабочие файлы субагентов
+.superpowers/
