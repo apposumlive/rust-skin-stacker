@@ -190,11 +190,16 @@ async fn send<A: StackApi>(
                     .min(MAX_WAIT_SECS);
                 journal.add(format!("Steam asked to slow down, waiting {seconds} s"));
                 emit(Progress::Waiting { seconds });
+                // «Остановить» проверяем до первой секунды и после каждой: нажатие на последней
+                // секунде (или при ожидании в 0 с) не должно привести к повторному запросу.
+                if stop.load(Ordering::SeqCst) {
+                    return Err(Failure::Stopped);
+                }
                 for _ in 0..seconds {
+                    sleep(Duration::from_secs(1)).await;
                     if stop.load(Ordering::SeqCst) {
                         return Err(Failure::Stopped);
                     }
-                    sleep(Duration::from_secs(1)).await;
                 }
             }
             other => return other.map_err(Failure::Steam),
@@ -298,12 +303,23 @@ mod tests {
 
     async fn go<A: StackApi>(api: &A, steps: &[Step], stop: &AtomicBool) -> Run {
         let (sleep, slept) = recording_sleep();
+        go_with(api, steps, stop, &sleep, &slept).await
+    }
+
+    /// То же, что `go`, но с чужой подменой паузы; `slept` — её журнал длительностей.
+    async fn go_with<A: StackApi>(
+        api: &A,
+        steps: &[Step],
+        stop: &AtomicBool,
+        sleep: &SleepFn,
+        slept: &Mutex<Vec<Duration>>,
+    ) -> Run {
         let journal = Journal::default();
         let mut events = Vec::new();
         let config = RunConfig {
             delay: Duration::from_millis(1500),
         };
-        let outcome = run(api, steps, &config, stop, &sleep, &journal, |p| {
+        let outcome = run(api, steps, &config, stop, sleep, &journal, |p| {
             events.push(p)
         })
         .await;
@@ -314,6 +330,34 @@ mod tests {
             slept,
             journal,
         }
+    }
+
+    /// Пауза для тестов: записывает длительность и нажимает «Остановить» на `stop_at`-й паузе.
+    fn stopping_sleep(
+        stop: &Arc<AtomicBool>,
+        stop_at: usize,
+    ) -> (SleepFn, Arc<Mutex<Vec<Duration>>>) {
+        let slept = Arc::new(Mutex::new(Vec::new()));
+        let log = slept.clone();
+        let stop = stop.clone();
+        let sleep: SleepFn = Arc::new(move |d| {
+            let count = {
+                let mut log = log.lock().unwrap();
+                log.push(d);
+                log.len()
+            };
+            if count == stop_at {
+                stop.store(true, Ordering::SeqCst);
+            }
+            Box::pin(async {})
+        });
+        (sleep, slept)
+    }
+
+    fn limited(retry_after: u64) -> Vec<Result<(), SteamError>> {
+        vec![Err(SteamError::RateLimited {
+            retry_after: Some(retry_after),
+        })]
     }
 
     fn waits(events: &[Progress]) -> Vec<u64> {
@@ -516,6 +560,64 @@ mod tests {
         let r = go(&api, &splits(2), &stop).await;
         assert_eq!(r.outcome.reason, StopReason::StoppedByUser);
         assert_eq!(api.calls().len(), 1);
+        assert!(r.slept.is_empty(), "no sleeping after stop: {:?}", r.slept);
+    }
+
+    /// «Остановить» нажали на второй секунде из тридцати: ждать дальше и слать запрос не надо.
+    #[tokio::test]
+    async fn stop_during_a_long_rate_limit_wait_stops_within_a_second() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let api = FakeApi::new(limited(30));
+        let (sleep, slept) = stopping_sleep(&stop, 2);
+        let r = go_with(&api, &splits(2), &stop, &sleep, &slept).await;
+        assert_eq!(
+            r.outcome,
+            RunOutcome {
+                reason: StopReason::StoppedByUser,
+                done: 0,
+                errors: 0,
+                total: 2
+            }
+        );
+        assert_eq!(r.slept, vec![Duration::from_secs(1); 2]);
+        assert_eq!(api.calls().len(), 1);
+        assert!(r.journal.text().contains("while waiting"));
+    }
+
+    /// «Остановить» нажали на последней секунде ожидания: повторного запроса быть не должно.
+    #[tokio::test]
+    async fn stop_during_the_last_second_of_a_wait_sends_no_request() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let api = FakeApi::new(limited(3));
+        let (sleep, slept) = stopping_sleep(&stop, 3);
+        let r = go_with(&api, &splits(2), &stop, &sleep, &slept).await;
+        assert_eq!(
+            r.outcome,
+            RunOutcome {
+                reason: StopReason::StoppedByUser,
+                done: 0,
+                errors: 0,
+                total: 2
+            }
+        );
+        assert_eq!(r.slept, vec![Duration::from_secs(1); 3]);
+        assert_eq!(api.calls(), vec!["split 1000"]);
+    }
+
+    /// `Retry-After: 0` — ожидания нет, но «Остановить» всё равно проверяется до повтора.
+    #[tokio::test]
+    async fn stop_with_a_zero_second_wait_sends_no_request() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let api = FakeApi {
+            replies: Mutex::new(limited(0).into()),
+            stop_on_call: Some(stop.clone()),
+            ..FakeApi::default()
+        };
+        let r = go(&api, &splits(2), &stop).await;
+        assert_eq!(r.outcome.reason, StopReason::StoppedByUser);
+        assert_eq!(waits(&r.events), vec![0]);
+        assert_eq!(api.calls(), vec!["split 1000"]);
+        assert!(r.slept.is_empty(), "no sleeping after stop: {:?}", r.slept);
     }
 
     #[tokio::test]
