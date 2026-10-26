@@ -3,7 +3,7 @@ import { api as realApi, useApi, type Api } from '../api';
 import { errorText, setLang, t } from '../i18n';
 import type { State } from '../store';
 import type { InvRecord, Operation, Plan, Skin } from '../types';
-import { byClass, byTag, fakeDocument, fire, type FakeEl } from './fake-dom';
+import { byClass, byTag, fakeDocument, findAll, fire, type FakeEl } from './fake-dom';
 import { itemView } from './panel-select';
 
 function rec(assetid: string, amount: number): InvRecord {
@@ -202,5 +202,26 @@ describe('split-off block', () => {
     expect(byClass(el, 'pri')[0].textContent).toBe(t('item.splitN', { count: '1' }));
     expect(preview).toHaveBeenCalledWith({ kind: 'splitOff', key: 'A', count: 1 });
     expect(text(line(el))).toContain('1 request');
+  });
+});
+
+describe('item view', () => {
+  it('builds the «becomes» line with the layout in bold between the muted parts', async () => {
+    const el = itemView(skinOf(8), state);
+    await flush();
+    const bold = byTag(line(el), 'b');
+    expect(bold).toHaveLength(1);
+    expect(bold[0].textContent).toBe('stack ×7 and 2 singles');
+    expect(text(line(el))).toBe(`${t('item.becomes')} stack ×7 and 2 singles · ${t('item.cost', { requests: '1 request', time: '~1 s' })}`);
+  });
+
+  it('keeps the actions docked below the scrolling part and focuses the heading', () => {
+    const el = itemView(skinOf(8), state);
+    const dock = byClass(el, 'dock')[0];
+    expect(byTag(dock, 'button').map((b) => b.textContent)).toEqual([t('item.splitN', { count: '1' }), t('item.combine')]);
+    expect(byClass(byClass(el, 'pbody')[0], 'acts')).toHaveLength(0);
+    const main = findAll(el, (node) => node.attrs.has('data-main'));
+    expect(main.map((node) => node.tag)).toEqual(['h2']);
+    expect(main[0].textContent).toBe('Skin A');
   });
 });

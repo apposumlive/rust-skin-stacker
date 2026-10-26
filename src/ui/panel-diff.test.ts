@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Panel } from '../store';
 import type { Inventory, Plan } from '../types';
-import { entering, panelStep, type Shown } from './panel-diff';
+import { entering, focusPlace, panelStep, takesFocus, type Shown } from './panel-diff';
 
 const plan = (): Plan => ({ operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] });
 const inventory = (): Inventory => ({ skins: [], unreadable: [] });
@@ -68,7 +68,7 @@ describe('panel step', () => {
     expect(
       panelStep(a, {
         ...a,
-        panel: { kind: 'result', plan: p, outcome: { reason: 'finished', done: 4, errors: 0, total: 4 }, reconciliation: null },
+        panel: { kind: 'result', plan: p, outcome: { reason: 'finished', done: 4, errors: 0, total: 4 }, reconciliation: null, stacks: null },
       }),
     ).toBe('rebuild');
   });
@@ -103,5 +103,25 @@ describe('panel enter animation', () => {
     const sel = shown({ kind: 'selection' });
     expect(entering(sel, { ...sel, selected: ['x'] })).toBe(false);
     expect(entering(sel, { ...sel, inventory: inventory() })).toBe(false);
+  });
+});
+
+describe('focus after a new view', () => {
+  const body = { contains: () => true } as unknown as Element;
+  const inside = {} as Element;
+  const outside = {} as Element;
+  const panel = { contains: (el: Element) => el === inside } as unknown as Element;
+
+  it('moves to the main element when the focus was in the panel or fell to <body>', () => {
+    expect(focusPlace(inside, panel, body)).toBe('panel');
+    expect(focusPlace(body, panel, body)).toBe('lost');
+    expect(focusPlace(null, panel, body)).toBe('lost');
+    expect(takesFocus('panel')).toBe(true);
+    expect(takesFocus('lost')).toBe(true);
+  });
+
+  it('leaves the focus in the grid, the search or the settings alone', () => {
+    expect(focusPlace(outside, panel, body)).toBe('elsewhere');
+    expect(takesFocus('elsewhere')).toBe(false);
   });
 });

@@ -1,16 +1,24 @@
 // Экран входа: как получить токен, поле вставки с проверкой на лету, почему это безопасно.
 
-import { switchLang } from '../actions';
+import { signIn, switchLang } from '../actions';
 import { TOKEN_PAGE, api, asUiError } from '../api';
 import { h, icon } from '../dom';
 import { fmtTimeLeft } from '../format';
 import { errorText, getLang, t } from '../i18n';
-import { getState, setState } from '../store';
-import type { TokenInfo } from '../types';
+import { getState } from '../store';
+import type { TokenInfo, UiError } from '../types';
 
 export interface Screen {
   el: HTMLElement;
   destroy(): void;
+}
+
+/**
+ * Текст ошибки на экране входа. `busy` здесь значит, что окно перезагрузили посреди операции: ядро забыло токен
+ * и закончит текущий запрос, а до тех пор новый токен не примет. Общее «Операция уже идёт» тут непонятно.
+ */
+export function loginErrorText(error: UiError): string {
+  return error.code === 'busy' ? t('login.busy') : errorText(error);
 }
 
 export function renderLogin(): Screen {
@@ -18,7 +26,7 @@ export function renderLogin(): Screen {
   const next = h('button', { class: 'btn pri', type: 'button', disabled: true }, t('login.continue'), icon('arrow-right'));
   const field = h('textarea', {
     class: 'login-field',
-    rows: 5,
+    rows: 3,
     placeholder: t('login.placeholder'),
     'aria-label': t('login.placeholder'),
     spellcheck: 'false',
@@ -35,7 +43,7 @@ export function renderLogin(): Screen {
   };
   // Ошибка, оставшаяся с прошлого экрана (например, «Забыть токен» не дошёл до ядра).
   const pending = getState().error;
-  if (pending) say(errorText(pending), 'bad');
+  if (pending) say(loginErrorText(pending), 'bad');
 
   const switchLanguage = async () => {
     const error = await switchLang(getLang() === 'ru' ? 'en' : 'ru');
@@ -70,7 +78,7 @@ export function renderLogin(): Screen {
       next.disabled = false;
     } catch (e) {
       if (mine !== seq) return;
-      status.textContent = errorText(asUiError(e));
+      status.textContent = loginErrorText(asUiError(e));
       status.classList.add('bad');
     }
   };
@@ -82,7 +90,7 @@ export function renderLogin(): Screen {
   next.addEventListener('click', () => {
     if (!info) return;
     field.value = '';
-    setState({ screen: 'main', token: info, tokenExpired: false, error: null });
+    signIn(info);
   });
 
   const lang = getLang();

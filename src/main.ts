@@ -10,16 +10,28 @@ import './styles/main.css';
 import './styles/panel.css';
 import './styles/overlay.css';
 
-import { loadInventory, selectSkin, setFilter, showPlan } from './actions';
+import { loadInventory, selectSkin, setFilter, showPlan, signIn } from './actions';
 import { api, inTauri, useApi } from './api';
 import { detectLang, setLang } from './i18n';
+import { isReloadKey } from './keys';
 import { visibleSkins } from './model';
-import { getState, initState, initialFilter, setState, subscribe, type State } from './store';
+import { getState, initState, initialFilter, subscribe, type State } from './store';
 import { renderLogin, type Screen } from './ui/login';
 import { mountMain } from './ui/shell';
 import { focusMenuButton } from './ui/topbar';
 
 async function boot(): Promise<void> {
+  // В релизе F5 и Ctrl+R не перезагружают окно: ядро при перезагрузке забывает токен и останавливает запуск.
+  // В разработке они нужны. Контекстное меню остаётся: через него вставляют токен.
+  if (!import.meta.env.DEV) {
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (isReloadKey(e)) e.preventDefault();
+      },
+      true,
+    );
+  }
   // В обычном браузере (npm run dev) Tauri нет — работает демо-режим. В сборку он не попадает.
   if (import.meta.env.DEV && !inTauri()) {
     const { createMockApi } = await import('./dev/mock');
@@ -71,8 +83,7 @@ async function boot(): Promise<void> {
 async function openDemoState(): Promise<void> {
   const demo = new URLSearchParams(location.search).get('demo');
   if (!demo) return;
-  const token = await api.setToken('demo');
-  setState({ screen: 'main', token });
+  signIn(await api.setToken('demo'));
   await loadInventory();
   const s = getState();
   if (!s.inventory || demo === 'main') return;

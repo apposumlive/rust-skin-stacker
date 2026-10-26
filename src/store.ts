@@ -18,7 +18,14 @@ export type Panel =
       waitUntil: number | null;
       stopping: boolean;
     }
-  | { kind: 'result'; plan: Plan; outcome: RunOutcome; reconciliation: Reconciliation | null };
+  | {
+      kind: 'result';
+      plan: Plan;
+      outcome: RunOutcome;
+      reconciliation: Reconciliation | null;
+      /** Стопок в инвентаре, прочитанном после запуска; `null` — ядро его не прислало. */
+      stacks: number | null;
+    };
 
 export interface State {
   screen: 'login' | 'main';

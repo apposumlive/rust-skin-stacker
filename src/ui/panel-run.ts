@@ -1,13 +1,13 @@
 // Правая панель вокруг операции: план, ход, итог со сверкой.
 
-import { closePanel, copyJournal, loadInventory, runPlan, stopRun } from '../actions';
+import { closePanel, copyJournal, forgetToken, loadInventory, runPlan, stopRun } from '../actions';
 import { h, icon } from '../dom';
 import { estimateSeconds, fmtDuration, fmtInt, remainingSeconds } from '../format';
 import { t, tn } from '../i18n';
 import { totals } from '../model';
 import type { Panel, State } from '../store';
 import type { Operation, Plan, Skin } from '../types';
-import { picture } from './panel-select';
+import { mainHeading, panelView, picture } from './panel-select';
 
 function title(operation: Operation): string {
   return operation.kind === 'splitOff' ? t('op.splitOff', { count: fmtInt(operation.count) }) : t(`op.${operation.kind}`);
@@ -26,52 +26,54 @@ function fact(label: string, value: string): HTMLElement {
 export function planView(plan: Plan, changed: boolean, state: State): HTMLElement {
   const operation = plan.operation;
   if (plan.requests === 0) {
-    return h(
-      'div',
-      { class: 'panel plan' },
-      h('h2', { class: 'plan-h' }, title(operation)),
-      changed ? h('p', { class: 'note' }, icon('refresh'), t('plan.changed')) : null,
-      h('p', { class: 'note ok' }, icon('circle-check'), t(isSplit(operation) ? 'plan.nothingSplit' : 'plan.nothingCombine')),
-      h('div', { class: 'grow' }),
-      h('button', { class: 'btn sec wide', type: 'button', onclick: closePanel }, t('plan.close')),
+    return panelView(
+      'plan',
+      [
+        h('h2', { class: 'plan-h' }, title(operation)),
+        changed ? h('p', { class: 'note' }, icon('refresh'), t('plan.changed')) : null,
+        h('p', { class: 'note ok' }, icon('circle-check'), t(isSplit(operation) ? 'plan.nothingSplit' : 'plan.nothingCombine')),
+      ],
+      [h('button', { class: 'btn sec wide', type: 'button', 'data-main': true, onclick: closePanel }, t('plan.close'))],
     );
   }
   const byKey = skinsByKey(state);
   const sub = operation.kind === 'splitOff' ? t('op.splitOff.sub', { count: fmtInt(plan.requests) }) : t(`op.${operation.kind}.sub`);
   const items = state.inventory ? totals(state.inventory).items : 0;
-  return h(
-    'div',
-    { class: 'panel plan' },
-    h('h2', { class: 'plan-h' }, title(operation)),
-    h('p', { class: 'isub' }, sub),
-    changed ? h('p', { class: 'note' }, icon('refresh'), t('plan.changed')) : null,
-    h(
-      'dl',
-      { class: 'facts' },
-      fact(t('plan.stacks'), fmtInt(plan.stacks)),
-      fact(t('plan.requestsLabel'), fmtInt(plan.requests)),
-      fact(t('plan.time'), fmtDuration(estimateSeconds(plan.requests, state.settings.delayMs))),
-    ),
-    h('div', { class: 'fh queue-h' }, t('plan.queue')),
-    h(
-      'ul',
-      { class: 'queue' },
-      ...plan.queue.map((item) => {
-        const skin = byKey.get(item.key);
-        return h(
-          'li',
-          {},
-          picture(skin, 64, 'qimg'),
-          h('span', { class: 'qn' }, `${skin?.name ?? item.key} ×${fmtInt(item.amount)}`),
-          h('span', { class: 'r num' }, t('plan.queueReq', { count: fmtInt(item.requests) })),
-        );
-      }),
-      plan.more ? h('li', { class: 'more' }, tn('plan.more', plan.more)) : null,
-    ),
-    h('p', { class: 'check' }, icon('scale'), t('plan.check', { count: fmtInt(items) })),
-    h('div', { class: 'grow' }),
-    h('button', { class: 'btn pri run', type: 'button', onclick: () => void runPlan(plan) }, icon('player-play'), t('plan.run')),
-    h('button', { class: 'btn sec cancel', type: 'button', onclick: closePanel }, t('plan.cancel')),
+  return panelView(
+    'plan',
+    [
+      h('h2', { class: 'plan-h' }, title(operation)),
+      h('p', { class: 'isub' }, sub),
+      changed ? h('p', { class: 'note' }, icon('refresh'), t('plan.changed')) : null,
+      h(
+        'dl',
+        { class: 'facts' },
+        fact(t('plan.stacks'), fmtInt(plan.stacks)),
+        fact(t('plan.requestsLabel'), fmtInt(plan.requests)),
+        fact(t('plan.time'), fmtDuration(estimateSeconds(plan.requests, state.settings.delayMs))),
+      ),
+      h('div', { class: 'fh queue-h' }, t('plan.queue')),
+      h(
+        'ul',
+        { class: 'queue' },
+        ...plan.queue.map((item) => {
+          const skin = byKey.get(item.key);
+          return h(
+            'li',
+            {},
+            picture(skin, 64, 'qimg'),
+            h('span', { class: 'qn' }, `${skin?.name ?? item.key} ×${fmtInt(item.amount)}`),
+            h('span', { class: 'r num' }, t('plan.queueReq', { count: fmtInt(item.requests) })),
+          );
+        }),
+        plan.more ? h('li', { class: 'more' }, tn('plan.more', plan.more)) : null,
+      ),
+      h('p', { class: 'check' }, icon('scale'), t('plan.check', { count: fmtInt(items) })),
+    ],
+    [
+      h('button', { class: 'btn pri run', type: 'button', 'data-main': true, onclick: () => void runPlan(plan) }, icon('player-play'), t('plan.run')),
+      h('button', { class: 'btn sec cancel', type: 'button', onclick: closePanel }, t('plan.cancel')),
+    ],
   );
 }
 
@@ -123,25 +125,20 @@ function paintRunning(parts: RunningParts, panel: Running, state: State, tick: (
 }
 
 export function runningView(panel: Running, state: State, tick: (fn: () => void) => void): HTMLElement {
+  const heading = t('run.title', { op: title(panel.plan.operation) });
   const fill = h('div', { class: 'fill' });
-  const bar = h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0 }, fill);
+  // Чтец экрана называет полосу так же, как заголовок: «Идёт: Разделить всё».
+  const bar = h('div', { class: 'progress', role: 'progressbar', 'aria-valuemin': 0, 'aria-label': heading }, fill);
   const progress = h('p', { class: 'num' });
   const current = h('p', { class: 'muted' });
   const left = h('p', { class: 'muted num' });
   const wait = h('p', { class: 'wait num', role: 'status' });
   const stopLabel = h('span', {});
-  const stop = h('button', { class: 'btn danger wide', type: 'button', onclick: stopRun }, icon('player-stop'), stopLabel);
-  const el = h(
-    'div',
-    { class: 'panel run-view' },
-    h('h2', { class: 'plan-h' }, t('run.title', { op: title(panel.plan.operation) })),
-    bar,
-    progress,
-    current,
-    left,
-    wait,
-    h('p', { class: 'foot' }, t('run.browse')),
-    stop,
+  const stop = h('button', { class: 'btn danger wide', type: 'button', 'data-main': true, onclick: stopRun }, icon('player-stop'), stopLabel);
+  const el = panelView(
+    'run-view',
+    [h('h2', { class: 'plan-h' }, heading), bar, progress, current, left, wait, h('p', { class: 'foot' }, t('run.browse'))],
+    [stop],
   );
   const parts: RunningParts = { bar, fill, progress, current, left, wait, stop, stopLabel };
   runningParts.set(el, parts);
@@ -160,49 +157,71 @@ export function patchRunning(el: HTMLElement, panel: Running, state: State, tick
   return true;
 }
 
-export function resultView(panel: Extract<Panel, { kind: 'result' }>): HTMLElement {
+type Result = Extract<Panel, { kind: 'result' }>;
+
+/** Вердикт сверки. «Сошлось» — только когда сверка есть, суммы равны и расхождений по скинам нет. */
+function verdict(panel: Result): HTMLElement {
   const { outcome, reconciliation } = panel;
-  const finished = outcome.reason === 'finished';
-  let check: HTMLElement;
   if (!reconciliation) {
-    check = h('p', { class: 'verdict bad' }, icon('alert-triangle'), t('result.checkUnavailable'));
-  } else if (reconciliation.before === reconciliation.after && reconciliation.mismatches.length === 0) {
-    check = h(
-      'p',
-      { class: 'verdict ok num' },
-      icon('scale'),
-      t('result.checkOk', { before: fmtInt(reconciliation.before), after: fmtInt(reconciliation.after) }),
-    );
-  } else {
-    check = h(
-      'div',
-      { class: 'verdict bad' },
-      h('p', { class: 'num' }, icon('alert-triangle'), t('result.checkBad', { before: fmtInt(reconciliation.before), after: fmtInt(reconciliation.after) })),
-      h(
-        'ul',
-        { class: 'mismatches num' },
-        ...reconciliation.mismatches.map((m) => h('li', {}, t('result.mismatch', { name: m.name, before: fmtInt(m.before), after: fmtInt(m.after) }))),
-      ),
-    );
+    const text = outcome.reason === 'tokenRejected' ? 'result.checkTokenRejected' : 'result.checkUnavailable';
+    return h('p', { class: 'verdict bad' }, icon('alert-triangle'), t(text));
   }
+  if (reconciliation.before === reconciliation.after && reconciliation.mismatches.length === 0) {
+    return h('p', { class: 'verdict ok' }, icon('scale'), t('result.checkOk'));
+  }
+  return h(
+    'div',
+    { class: 'verdict bad' },
+    h('p', {}, icon('alert-triangle'), t('result.checkBad')),
+    h(
+      'ul',
+      { class: 'mismatches num' },
+      ...reconciliation.mismatches.map((m) => h('li', {}, t('result.mismatch', { name: m.name, before: fmtInt(m.before), after: fmtInt(m.after) }))),
+    ),
+  );
+}
+
+export function resultView(panel: Result): HTMLElement {
+  const { outcome, reconciliation, stacks } = panel;
+  const finished = outcome.reason === 'finished';
+  const rejected = outcome.reason === 'tokenRejected';
+
   const copyLabel = h('span', {}, t('result.copyLog'));
   const copy = async () => {
     copyLabel.textContent = t((await copyJournal()) ? 'result.copied' : 'menu.copyFailed');
   };
-  return h(
-    'div',
-    { class: 'panel outcome' },
-    h('h2', { class: 'plan-h' }, t(finished ? 'result.done' : 'result.stopped')),
-    h('p', { class: 'isub num' }, t('result.summary', { requests: tn('plan.requests', outcome.done), errors: fmtInt(outcome.errors) })),
-    finished ? null : h('p', { class: 'note' }, icon('alert-triangle'), t(`result.reason.${outcome.reason}`)),
-    check,
-    h('div', { class: 'grow' }),
-    h('button', { class: 'btn pri wide', type: 'button', onclick: () => void loadInventory() }, icon('refresh'), t('result.reload')),
-    h(
-      'div',
-      { class: 'acts' },
-      h('button', { class: 'btn sec', type: 'button', onclick: () => void copy() }, icon('clipboard'), copyLabel),
-      h('button', { class: 'btn sec', type: 'button', onclick: closePanel }, t('result.close')),
-    ),
+  const button = (main: boolean, content: Array<Node | string>, onclick: () => void) =>
+    h('button', { class: main ? 'btn pri' : 'btn sec', type: 'button', onclick }, ...content);
+  // Главная кнопка — то, что разумно сделать дальше: токен отклонён — вставить новый; сверка есть — закрыть;
+  // сверки нет — перечитать инвентарь, чтобы она стала возможна.
+  const close = (main: boolean) => button(main, [t('result.close')], closePanel);
+  const reload = (main: boolean) => button(main, [icon('refresh'), t('result.reload')], () => void loadInventory());
+  const copyLog = button(false, [icon('clipboard'), copyLabel], () => void copy());
+  const buttons = rejected
+    ? [button(true, [icon('key'), t('result.newToken')], () => void forgetToken()), copyLog, close(false)]
+    : reconciliation
+      ? [close(true), reload(false), copyLog]
+      : [reload(true), copyLog, close(false)];
+
+  return panelView(
+    'outcome',
+    [
+      mainHeading('plan-h', t(finished ? 'result.done' : 'result.stopped')),
+      h('p', { class: 'isub' }, title(panel.plan.operation)),
+      finished ? null : h('p', { class: 'note' }, icon('alert-triangle'), t(`result.reason.${outcome.reason}`)),
+      verdict(panel),
+      // Только то, что известно точно: нет данных — нет строки.
+      h(
+        'dl',
+        { class: 'facts' },
+        fact(t('result.requests'), t('result.requestsValue', { done: fmtInt(outcome.done), total: fmtInt(outcome.total) })),
+        fact(t('result.errors'), fmtInt(outcome.errors)),
+        reconciliation
+          ? fact(t('result.pieces'), t('result.piecesValue', { before: fmtInt(reconciliation.before), after: fmtInt(reconciliation.after) }))
+          : null,
+        stacks !== null ? fact(t('result.stacksNow'), fmtInt(stacks)) : null,
+      ),
+    ],
+    [h('div', { class: 'acts one' }, ...buttons)],
   );
 }

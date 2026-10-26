@@ -40,3 +40,17 @@ export function panelStep(prev: Shown | null, next: Shown): PanelStep {
 export function entering(prev: Shown | null, next: Shown): boolean {
   return !prev || prev.panel.kind !== next.panel.kind || !prev.inventory !== !next.inventory;
 }
+
+/** Где был фокус, когда вид панели собирался заново: в панели, потерян (на <body>) или в другом месте окна. */
+export type FocusPlace = 'panel' | 'lost' | 'elsewhere';
+
+export function focusPlace(active: Element | null, panel: Element, body: Element | null): FocusPlace {
+  if (!active || active === body) return 'lost';
+  return panel.contains(active) ? 'panel' : 'elsewhere';
+}
+
+/**
+ * Переводить ли фокус на главный элемент нового вида. Старый вид удалён вместе с кнопкой, которую нажали
+ * («Запустить», «Отмена», «Закрыть»), и фокус упал бы на <body>. Фокус в сетке или поиске не трогаем.
+ */
+export const takesFocus = (place: FocusPlace): boolean => place !== 'elsewhere';

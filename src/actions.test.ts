@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { forgetToken, loadInventory, runPlan, saveSettings, showPlan, stopRun, switchLang } from './actions';
+import { adoptInventory, forgetToken, loadInventory, runPlan, saveSettings, showPlan, signIn, stopRun, switchLang } from './actions';
 import { useApi, type Api } from './api';
 import { setLang } from './i18n';
 import { visibleSkins } from './model';
@@ -15,6 +15,9 @@ function skin(key: string, amount = 3): Skin {
 }
 
 const inv = (...keys: string[]): Inventory => ({ skins: keys.map((k) => skin(k)), unreadable: [] });
+
+/** Инвентарь, где всё лежит по одному: таким он становится после «Разделить всё». */
+const singles = (...keys: string[]): Inventory => ({ skins: keys.map((k) => skin(k, 1)), unreadable: [] });
 
 /** Инвентарь из пар «предмет — тип»: у каждого предмета тип с этим id. */
 const invIn = (...pairs: Array<[key: string, category: string]>): Inventory => ({
@@ -113,7 +116,7 @@ describe('runPlan', () => {
     const before = getState().inventory;
     await runPlan(plan);
     const s = getState();
-    expect(s.panel).toEqual({ kind: 'result', plan, outcome: outcome(), reconciliation: null });
+    expect(s.panel).toEqual({ kind: 'result', plan, outcome: outcome(), reconciliation: null, stacks: null });
     expect(s.inventory).toBe(before);
     expect(s.tokenExpired).toBe(false);
   });
@@ -122,7 +125,7 @@ describe('runPlan', () => {
     const reconciliation = { before: 9, after: 9, mismatches: [{ key: 'A', name: 'A', before: 4, after: 5 }] };
     useApi(fakeApi({ start: async () => ({ kind: 'finished', outcome: outcome(), reconciliation, inventory: null }) }));
     await runPlan(plan);
-    expect(getState().panel).toEqual({ kind: 'result', plan, outcome: outcome(), reconciliation });
+    expect(getState().panel).toEqual({ kind: 'result', plan, outcome: outcome(), reconciliation, stacks: null });
   });
 
   it('takes the fresh inventory from the result', async () => {
@@ -557,5 +560,241 @@ describe('switchLang and saveSettings', () => {
     useApi(fakeApi({ saveSettings: saveFails }));
     await expect(saveSettings({ language: 'ru', delayMs: 1500 })).rejects.toEqual({ code: 'settingsNotSaved' });
     expect(getState().lang).toBe('en');
+  });
+});
+
+describe('adoptInventory', () => {
+  it('switches «Stacks» to «All» after a run that left no stacks, so the grid does not look empty', async () => {
+    setState({ filter: { ...initialFilter, show: 'stacks' } });
+    useApi(fakeApi({ start: async () => finished('finished', singles('A', 'B')) }));
+    await runPlan(plan);
+    const s = getState();
+    expect(s.filter.show).toBe('all');
+    expect(visibleSkins(s.inventory!, s.filter).map((k) => k.key)).toEqual(['A', 'B']);
+  });
+
+  it('does the same when the plan changed', async () => {
+    setState({ filter: { ...initialFilter, show: 'stacks' } });
+    useApi(fakeApi({ start: async () => ({ kind: 'planChanged', plan: newPlan, inventory: singles('A') }) }));
+    await runPlan(plan);
+    expect(getState().filter.show).toBe('all');
+  });
+
+  it('does the same on a reload', async () => {
+    setState({ filter: { ...initialFilter, show: 'dupes' } });
+    useApi(fakeApi({ loadInventory: async () => singles('A') }));
+    await loadInventory();
+    expect(getState().filter.show).toBe('all');
+  });
+
+  it('keeps «Stacks» and the same filter object while there are stacks', async () => {
+    const filter = { ...initialFilter, show: 'stacks' as const };
+    setState({ filter });
+    useApi(fakeApi({ start: async () => finished('finished', inv('A')) }));
+    await runPlan(plan);
+    expect(getState().filter).toBe(filter);
+  });
+
+  it('keeps «Stacks» when the inventory itself is empty', () => {
+    setState({ filter: { ...initialFilter, show: 'stacks' } });
+    expect(adoptInventory({ skins: [], unreadable: [] }).filter.show).toBe('stacks');
+  });
+
+  it('drops the selected keys and the anchor that vanished after a run', async () => {
+    setState({ selected: ['A', 'B'], anchor: 'B' });
+    useApi(fakeApi({ start: async () => finished('finished', inv('A')) }));
+    await runPlan(plan);
+    expect(getState()).toMatchObject({ selected: ['A'], anchor: null });
+  });
+
+  it('keeps the same selection array and the anchor when nothing vanished', () => {
+    const selected = ['A'];
+    setState({ selected, anchor: 'A' });
+    const next = adoptInventory(inv('A', 'C'));
+    expect(next.selected).toBe(selected);
+    expect(next.anchor).toBe('A');
+  });
+
+  it('leaves the selection alone when the core sends no inventory after the run', async () => {
+    setState({ selected: ['B'], anchor: 'B' });
+    await runPlan(plan);
+    expect(getState()).toMatchObject({ selected: ['B'], anchor: 'B' });
+  });
+
+  it('counts the stacks of the fresh inventory for the result, and none without it', async () => {
+    useApi(fakeApi({ start: async () => finished('finished', { skins: [skin('A', 3), skin('B', 1)], unreadable: [] }) }));
+    await runPlan(plan);
+    expect(getState().panel).toMatchObject({ kind: 'result', stacks: 1 });
+    useApi(fakeApi({ start: async () => finished('finished', null) }));
+    await runPlan(plan);
+    expect(getState().panel).toMatchObject({ kind: 'result', stacks: null });
+  });
+});
+
+describe('Stop pressed before the run reached the core', () => {
+  let emit: (p: Progress) => void = () => {};
+  const event = (done: number): Progress => ({ kind: 'request', done, total: 4, errors: 0, key: 'A' });
+
+  async function startRun(stop: Api['stop']) {
+    useApi(
+      fakeApi({
+        stop,
+        start: () => new Promise<StartResult>(() => {}),
+        onProgress: async (cb) => {
+          emit = cb;
+          return () => {};
+        },
+      }),
+    );
+    void runPlan(plan);
+    await tick();
+  }
+
+  it('is asked once more on the first progress event, because the start of the run wiped it', async () => {
+    const stop = vi.fn(async () => {});
+    await startRun(stop);
+    stopRun();
+    expect(stop).toHaveBeenCalledTimes(1);
+    emit(event(0));
+    expect(stop).toHaveBeenCalledTimes(2);
+    emit(event(1));
+    await tick();
+    expect(stop).toHaveBeenCalledTimes(2);
+    expect(running().stopping).toBe(true);
+  });
+
+  it('is not asked again when Stop was pressed after the run started', async () => {
+    const stop = vi.fn(async () => {});
+    await startRun(stop);
+    emit(event(0));
+    stopRun();
+    emit(event(1));
+    await tick();
+    expect(stop).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not asked at all when nobody pressed Stop', async () => {
+    const stop = vi.fn(async () => {});
+    await startRun(stop);
+    emit(event(0));
+    await tick();
+    expect(stop).not.toHaveBeenCalled();
+  });
+
+  it('lets the user press Stop again when the repeated request fails', async () => {
+    const stop = vi.fn<Api['stop']>().mockResolvedValueOnce().mockRejectedValueOnce({ code: 'unknown' });
+    await startRun(stop);
+    stopRun();
+    emit(event(0));
+    await tick();
+    expect(running().stopping).toBe(false);
+    expect(getState().error).toEqual({ code: 'unknown', status: null });
+  });
+});
+
+describe('language change', () => {
+  it('re-reads the inventory in the new language and keeps the open view', async () => {
+    const load = vi.fn(async () => inv('A', 'B'));
+    useApi(fakeApi({ loadInventory: load }));
+    setState({ panel: { kind: 'plan', plan, changed: false } });
+    await saveSettings({ language: 'ru', delayMs: 1500 });
+    await tick();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledWith('ru');
+    expect(getState().panel).toEqual({ kind: 'plan', plan, changed: false });
+  });
+
+  it('does not re-read when only the pause changed', async () => {
+    const load = vi.fn(async () => inv('A'));
+    useApi(fakeApi({ loadInventory: load }));
+    await saveSettings({ language: 'en', delayMs: 3000 });
+    await tick();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('does not read on the login screen', async () => {
+    freshState({ screen: 'login', token: null, inventory: null });
+    const load = vi.fn(async () => inv('A'));
+    useApi(fakeApi({ loadInventory: load }));
+    await switchLang('ru');
+    await tick();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('waits for the result of a run and keeps the result view', async () => {
+    const run = deferred<StartResult>();
+    const load = vi.fn(async () => inv('A', 'B'));
+    useApi(fakeApi({ start: () => run.promise, loadInventory: load }));
+    const done = runPlan(plan);
+    await tick();
+    await switchLang('ru');
+    await tick();
+    expect(load).not.toHaveBeenCalled();
+    run.resolve(finished('finished', inv('A')));
+    await done;
+    await tick();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledWith('ru');
+    expect(getState().panel.kind).toBe('result');
+  });
+
+  it('forgets the pending re-read with the token', async () => {
+    const run = deferred<StartResult>();
+    const load = vi.fn(async () => inv('A'));
+    useApi(fakeApi({ start: () => run.promise, loadInventory: load }));
+    const done = runPlan(plan);
+    await tick();
+    await switchLang('ru');
+    await forgetToken();
+    run.resolve(finished());
+    await done;
+    signIn({ steamidMasked: '7656…0001', expiresAt: 2_000_000_000 });
+    useApi(fakeApi({ start: async () => finished(), loadInventory: load }));
+    setState({ inventory: inv('A') });
+    await runPlan(plan);
+    await tick();
+    expect(load).not.toHaveBeenCalled();
+  });
+});
+
+describe('signIn', () => {
+  const token = { steamidMasked: '7656…0001', expiresAt: 2_000_000_000 };
+
+  beforeEach(() => {
+    freshState({ screen: 'login', token: null, inventory: null });
+  });
+
+  it('opens the main screen with a clean state', () => {
+    setState({ tokenExpired: true, error: { code: 'network', status: null } });
+    signIn(token);
+    expect(getState()).toMatchObject({ screen: 'main', token, inventory: null, loading: false, tokenExpired: false, error: null });
+  });
+
+  it('drops a stale noToken from a read the core cut off when the new token came', async () => {
+    const read = deferred<Inventory>();
+    useApi(fakeApi({ loadInventory: () => read.promise }));
+    const done = loadInventory();
+    signIn(token);
+    read.reject({ code: 'noToken' });
+    await done;
+    expect(getState()).toMatchObject({ screen: 'main', tokenExpired: false, error: null, loading: false, inventory: null });
+  });
+
+  it('drops a stale inventory of the old token', async () => {
+    const read = deferred<Inventory>();
+    useApi(fakeApi({ loadInventory: () => read.promise }));
+    const done = loadInventory();
+    signIn(token);
+    read.resolve(inv('OLD'));
+    await done;
+    expect(getState().inventory).toBeNull();
+  });
+
+  it('applies a read started after it', async () => {
+    const fresh = inv('NEW');
+    useApi(fakeApi({ loadInventory: async () => fresh }));
+    signIn(token);
+    await loadInventory();
+    expect(getState().inventory).toBe(fresh);
   });
 });

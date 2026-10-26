@@ -61,6 +61,10 @@ export class FakeEl {
     this.children.push(...nodes);
   }
 
+  replaceChildren(...nodes: Array<FakeEl | FakeText | string>): void {
+    this.children = nodes.map((node) => (typeof node === 'string' ? new FakeText(node) : node));
+  }
+
   set textContent(value: string) {
     this.children = value === '' ? [] : [new FakeText(value)];
   }

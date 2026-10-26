@@ -2,14 +2,18 @@
 
 import { api, asUiError } from './api';
 import { detectLang, setLang, type Lang } from './i18n';
-import { categoriesOf, nextSelection, type Filter, type SelectMode } from './model';
-import { getState, setState, type Panel } from './store';
-import type { Operation, Plan, Progress, Settings, UiError } from './types';
+import { categoriesOf, nextSelection, totals, visibleSkins, type Filter, type SelectMode } from './model';
+import { getState, setState, type Panel, type State } from './store';
+import type { Inventory, Operation, Plan, Progress, Settings, TokenInfo, UiError } from './types';
 
 const TOKEN_CODES = new Set(['tokenExpired', 'tokenRejected', 'noToken']);
 
-// Номер сессии токена: растёт в «Забыть токен». Ответ, начатый в прошлой сессии, в окно не попадает.
+// Номер сессии токена: растёт в «Забыть токен» и при входе с новым токеном. Ответ, начатый в прошлой сессии,
+// в окно не попадает: ни инвентарь, ни ошибка (например, noToken чтения, оборванного новым токеном).
 let session = 0;
+
+// Язык сменили во время запуска: инвентарь перечитается на новом языке, когда придёт результат.
+let rereadAfterRun = false;
 
 /** Ошибка токена — плашка «Токен истёк», любая другая — плашка с текстом ошибки. */
 function showError(error: UiError): void {
@@ -17,24 +21,39 @@ function showError(error: UiError): void {
   else setState({ error });
 }
 
-export async function loadInventory(): Promise<void> {
+/**
+ * Новый инвентарь и то, что от него зависит. Из выбора, якоря и отметок типов уходят исчезнувшие ключи и типы.
+ * Если «Показать» оставляет сетку пустой, хотя предметы есть (после «Разделить всё» при «Стопках»), — снова «Все»:
+ * иначе кажется, что предметы пропали. Неизменившиеся массив выбора и объект фильтра остаются теми же.
+ */
+export function adoptInventory(inventory: Inventory): Pick<State, 'inventory' | 'selected' | 'anchor' | 'filter'> {
+  const s = getState();
+  const keys = new Set(inventory.skins.map((skin) => skin.key));
+  const known = new Set(categoriesOf(inventory).map((c) => c.id));
+  const selected = s.selected.every((k) => keys.has(k)) ? s.selected : s.selected.filter((k) => keys.has(k));
+  const anchor = s.anchor !== null && keys.has(s.anchor) ? s.anchor : null;
+  let filter: Filter = s.filter;
+  // Отметка типа, которого в новом инвентаре нет, снять нечем: флажка для неё не нарисовано, а сетка пуста.
+  const categories = filter.categories.filter((id) => known.has(id));
+  if (categories.length !== filter.categories.length) filter = { ...filter, categories };
+  if (filter.show !== 'all' && inventory.skins.length > 0 && visibleSkins(inventory, filter).length === 0) {
+    filter = { ...filter, show: 'all' };
+  }
+  return { inventory, selected, anchor, filter };
+}
+
+/** `keepPanel` — не закрывать открытый вид (перечитывание после смены языка). Иначе панель возвращается к выбору. */
+export async function loadInventory(options: { keepPanel?: boolean } = {}): Promise<void> {
   const mine = session;
   setState({ loading: true, error: null });
   try {
     const inventory = await api.loadInventory(getState().lang);
     if (mine !== session) return;
-    const keys = new Set(inventory.skins.map((s) => s.key));
-    const known = new Set(categoriesOf(inventory).map((c) => c.id));
-    const s = getState();
-    // Отметка типа, которого в новом инвентаре нет, снять нечем: флажка для неё не нарисовано, а сетка пуста.
-    const categories = s.filter.categories.filter((id) => known.has(id));
+    const panel = getState().panel;
     setState({
-      inventory,
+      ...adoptInventory(inventory),
       loading: false,
-      selected: s.selected.filter((k) => keys.has(k)),
-      // Без лишних отметок объект фильтра остаётся прежним: сетка не пересоздаётся и не прокручивается в начало.
-      filter: categories.length === s.filter.categories.length ? s.filter : { ...s.filter, categories },
-      panel: s.panel.kind === 'running' ? s.panel : { kind: 'selection' },
+      panel: panel.kind === 'running' || options.keepPanel ? panel : { kind: 'selection' },
     });
   } catch (e) {
     if (mine !== session) return;
@@ -80,26 +99,43 @@ export async function runPlan(plan: Plan): Promise<void> {
   const mine = session;
   setState({ panel: running(plan), error: null });
   let unlisten: (() => void) | null = null;
+  let first = true;
   try {
     unlisten = await api.onProgress((progress) => {
-      if (mine === session) onProgress(progress);
+      if (mine !== session) return;
+      const resend = first;
+      first = false;
+      onProgress(progress);
+      // «Остановить», нажатая, пока start шёл к ядру, стёрта началом запуска. Первое событие значит, что запуск
+      // в ядре начался: повторяем просьбу один раз, и она сработает после текущего запроса.
+      const panel = getState().panel;
+      if (resend && panel.kind === 'running' && panel.stopping) sendStop(mine);
     });
     if (mine !== session) return;
     const result = await api.start(plan.operation, getState().lang);
     if (mine !== session) return;
     if (result.kind === 'planChanged') {
-      setState({ inventory: result.inventory, panel: { kind: 'plan', plan: result.plan, changed: true } });
+      setState({ ...adoptInventory(result.inventory), panel: { kind: 'plan', plan: result.plan, changed: true } });
     } else {
+      const fresh = result.inventory;
       setState({
-        inventory: result.inventory ?? getState().inventory,
-        panel: { kind: 'result', plan, outcome: result.outcome, reconciliation: result.reconciliation },
+        ...(fresh ? adoptInventory(fresh) : {}),
+        panel: {
+          kind: 'result',
+          plan,
+          outcome: result.outcome,
+          reconciliation: result.reconciliation,
+          stacks: fresh ? totals(fresh).stacks : null,
+        },
         tokenExpired: result.outcome.reason === 'tokenRejected',
       });
     }
+    afterRun();
   } catch (e) {
     if (mine !== session) return;
     setState({ panel: { kind: 'selection' } });
     showError(asUiError(e));
+    afterRun();
   } finally {
     unlisten?.();
   }
@@ -120,16 +156,60 @@ function onProgress(progress: Progress): void {
   }
 }
 
-export function stopRun(): void {
-  const panel = getState().panel;
-  if (panel.kind !== 'running' || panel.stopping) return;
-  const mine = session;
-  setState({ panel: { ...panel, stopping: true } });
+/** Просит ядро остановиться. Не вышло — «Остановить» снова доступна, ошибка видна. */
+function sendStop(mine: number): void {
   api.stop().catch((e: unknown) => {
     if (mine !== session) return;
     const now = getState().panel;
     if (now.kind === 'running') setState({ panel: { ...now, stopping: false } });
     showError(asUiError(e));
+  });
+}
+
+export function stopRun(): void {
+  const panel = getState().panel;
+  if (panel.kind !== 'running' || panel.stopping) return;
+  setState({ panel: { ...panel, stopping: true } });
+  sendStop(session);
+}
+
+/** Результат запуска показан: если язык сменили во время запуска, теперь перечитываем инвентарь. */
+function afterRun(): void {
+  if (!rereadAfterRun) return;
+  rereadAfterRun = false;
+  rereadForLanguage();
+}
+
+/**
+ * Названия скинов и типов Steam присылает на языке чтения. После смены языка инвентарь перечитывается,
+ * открытый вид остаётся; во время запуска — после результата. Без инвентаря и с отклонённым токеном читать нечего.
+ */
+function rereadForLanguage(): void {
+  const s = getState();
+  if (s.screen !== 'main' || !s.inventory || s.tokenExpired) return;
+  if (s.panel.kind === 'running') rereadAfterRun = true;
+  else void loadInventory({ keepPanel: true });
+}
+
+/**
+ * Вход с проверенным токеном. Начинает новую сессию: поздний ответ прошлой — например, noToken чтения,
+ * которое ядро оборвало, когда вставили новый токен, — не вернёт окно к плашке «Токен истёк».
+ */
+export function signIn(token: TokenInfo): void {
+  session += 1;
+  rereadAfterRun = false;
+  setState({
+    screen: 'main',
+    token,
+    inventory: null,
+    loading: false,
+    selected: [],
+    anchor: null,
+    panel: { kind: 'selection' },
+    tokenExpired: false,
+    error: null,
+    menuOpen: false,
+    settingsOpen: false,
   });
 }
 
@@ -139,6 +219,7 @@ export function stopRun(): void {
  */
 export async function forgetToken(): Promise<void> {
   session += 1;
+  rereadAfterRun = false;
   let failure: UiError | null = null;
   try {
     await api.forgetToken();
@@ -172,8 +253,10 @@ export async function copyJournal(): Promise<boolean> {
 export async function saveSettings(settings: Settings): Promise<void> {
   const saved = await api.saveSettings(settings);
   const lang: Lang = saved.language ?? detectLang(navigator.language);
+  const relang = lang !== getState().lang;
   setLang(lang);
   setState({ settings: saved, lang, settingsOpen: false });
+  if (relang) rereadForLanguage();
 }
 
 /** Не отклоняется: ошибку возвращает (язык не меняется), на главном экране ещё и показывает плашкой. */
