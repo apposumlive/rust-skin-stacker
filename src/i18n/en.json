@@ -8,6 +8,7 @@
   "login.step2": "Select everything on the page and copy it: Ctrl+A, then Ctrl+C.",
   "login.step3": "Paste it into the field below. The app finds the token itself.",
   "login.open": "Open the token page",
+  "login.openFailed": "Could not open the browser. Open this address yourself: {url}",
   "login.placeholder": "Paste the whole page or just the token",
   "login.ok": "Token for account {id}, valid for {left}",
   "login.continue": "Continue",
