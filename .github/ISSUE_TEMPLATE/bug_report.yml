@@ -1,0 +1,49 @@
+name: Bug report / Ошибка
+description: Something does not work / Что-то не работает
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste your Steam token, the token page or the `steamLoginSecure` cookie here.** Anyone who has the token can act on your Steam account until it expires. The log from Menu → Copy log has no token in it and is safe to paste.
+
+        **Никогда не вставляйте сюда токен Steam, страницу токена или cookie `steamLoginSecure`.** С токеном любой может действовать от вашего аккаунта, пока срок не истечёт. В журнале из «Меню → Скопировать журнал» токена нет, его можно вставлять.
+  - type: input
+    id: version
+    attributes:
+      label: App version / Версия приложения
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: system
+    attributes:
+      label: System / Система
+      options:
+        - Windows 11
+        - Windows 10
+        - Linux (AppImage)
+        - Linux (deb)
+        - Linux (rpm)
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened / Что произошло
+      description: What you did, what you expected and what you got. / Что вы сделали, что ожидали и что получилось.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log / Журнал
+      description: Menu → Copy log. / Меню → «Скопировать журнал».
+      render: text
+  - type: checkboxes
+    id: no-token
+    attributes:
+      label: Token / Токен
+      options:
+        - label: There is no token, token page or cookie in this issue / В этом issue нет токена, страницы токена и cookie
+          required: true
