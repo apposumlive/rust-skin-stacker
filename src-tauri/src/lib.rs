@@ -1,3 +1,4 @@
+pub mod steam;
 pub mod token;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
