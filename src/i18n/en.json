@@ -162,7 +162,7 @@
   "result.stopped": "Stopped",
   "result.reason.stoppedByUser": "Stopped with the Stop button. What was done stays done.",
   "result.reason.tokenRejected": "Steam stopped accepting the token. Paste a new one and run again — what was done stays done.",
-  "result.reason.tooManyFailures": "Three requests in a row failed, so the app stopped. Details are in the log.",
+  "result.reason.tooManyFailures": "Steam refused or did not answer three times in a row, so the app stopped. A stack Steam refuses to split or combine is skipped. Details are in the log.",
   "result.checkOk": "The count matches: nothing is missing.",
   "result.checkBad": "The count does not match.",
   "result.mismatch": "{name}: was {before}, now {after}",
