@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fmtDuration } from '../format';
+import { estimateSeconds, fmtDuration } from '../format';
 import { setLang, t } from '../i18n';
 import type { Panel, State } from '../store';
 import type { Inventory, InvRecord, Plan, Skin } from '../types';
@@ -53,18 +53,52 @@ describe('running view', () => {
     expect(stop.disabled).toBe(false);
     expect(stop.textContent).toBe(t('run.stop'));
 
-    for (const done of [1, 2, 3]) {
-      expect(patchRunning(el, running({ done, errors: done - 1, key: 'A' }), state, tick)).toBe(true);
+    for (const [done, errors] of [[1, 0], [1, 1], [2, 1]]) {
+      expect(patchRunning(el, running({ done, errors, key: 'A' }), state, tick)).toBe(true);
       expect(byTag(el, 'button')).toHaveLength(1);
       expect(byTag(el, 'button')[0]).toBe(stop);
       expect(byClass(el, 'fill')[0]).toBe(fill);
       expect(byClass(el, 'progress')[0]).toBe(bar);
     }
+    // Неудачный шаг тоже пройден: полоса и значение для чтеца экрана считают done + errors.
     expect(fill.style.width).toBe('75%');
     expect(bar.getAttribute('aria-valuenow')).toBe('3');
     expect(bar.getAttribute('aria-valuemax')).toBe('4');
-    expect(el.textContent).toContain(t('run.progress', { done: '3', total: '4', errors: '2' }));
+    expect(el.textContent).toContain(t('run.progress', { done: '2', total: '4', errors: '1' }));
     expect(el.textContent).toContain(t('run.current', { name: 'Skin A' }));
+  });
+
+  const leftLine = (el: unknown) => byClass(el, 'muted').filter((p) => p.classes.has('num'))[0];
+  const leftFor = (steps: number) => t('run.left', { time: fmtDuration(estimateSeconds(steps, state.settings.delayMs)) });
+
+  it('does not count failed and skipped steps as steps left', () => {
+    const el = runningView(running({ total: 10, done: 2, errors: 5 }), state, vi.fn());
+    expect(leftLine(el).textContent).toBe(leftFor(3));
+    expect(byClass(el, 'fill')[0].style.width).toBe('70%');
+    expect(byClass(el, 'progress')[0].getAttribute('aria-valuenow')).toBe('7');
+  });
+
+  it('drops the steps of a refused stack from the time left and fills the bar to the end', () => {
+    const tick = vi.fn();
+    // Steam отказал первому шагу стопки на 999 шагов: остальные 998 пропущены, впереди 10 настоящих шагов.
+    const el = runningView(running({ total: 1009, done: 0, errors: 999, key: 'A' }), state, tick);
+    const fill = byClass(el, 'fill')[0];
+    const bar = byClass(el, 'progress')[0];
+    expect(leftLine(el).textContent).toBe(leftFor(10));
+    expect(fill.style.width).toBe('99%');
+    expect(bar.getAttribute('aria-valuenow')).toBe('999');
+
+    patchRunning(el, running({ total: 1009, done: 10, errors: 999, key: 'A' }), state, tick);
+    expect(leftLine(el).textContent).toBe(leftFor(0));
+    expect(fill.style.width).toBe('100%');
+    expect(bar.getAttribute('aria-valuenow')).toBe('1009');
+  });
+
+  it('never fills the bar past the end or shows negative steps left', () => {
+    const el = runningView(running({ total: 4, done: 3, errors: 2 }), state, vi.fn());
+    expect(byClass(el, 'fill')[0].style.width).toBe('100%');
+    expect(byClass(el, 'progress')[0].getAttribute('aria-valuenow')).toBe('4');
+    expect(leftLine(el).textContent).toBe(leftFor(0));
   });
 
   it('patches the stop button in place when stopping starts', () => {

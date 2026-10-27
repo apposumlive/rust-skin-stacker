@@ -111,10 +111,13 @@ function paintWait(wait: HTMLElement, until: number | null, tick: (fn: () => voi
 
 function paintRunning(parts: RunningParts, panel: Running, state: State, tick: (fn: () => void) => void): void {
   const name = panel.key ? (skinsByKey(state).get(panel.key)?.name ?? panel.key) : '';
-  const left = Math.max(0, panel.total - panel.done);
-  parts.fill.style.width = `${panel.total ? Math.round((panel.done / panel.total) * 100) : 100}%`;
+  // Пройденные шаги — выполненные и неудачные вместе: шаги пропущенной стопки идут в `errors` и не отправляются,
+  // поэтому ни в «Осталось», ни в незаполненной части полосы их быть не должно.
+  const passed = Math.min(panel.done + panel.errors, panel.total);
+  const left = panel.total - passed;
+  parts.fill.style.width = `${panel.total ? Math.round((passed / panel.total) * 100) : 100}%`;
   parts.bar.setAttribute('aria-valuemax', String(panel.total));
-  parts.bar.setAttribute('aria-valuenow', String(panel.done));
+  parts.bar.setAttribute('aria-valuenow', String(passed));
   parts.progress.textContent = t('run.progress', { done: fmtInt(panel.done), total: fmtInt(panel.total), errors: fmtInt(panel.errors) });
   parts.current.hidden = !name;
   parts.current.textContent = name ? t('run.current', { name }) : '';
