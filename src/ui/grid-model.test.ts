@@ -15,11 +15,12 @@ describe('grid header', () => {
     setLang('ru');
     expect(gridMeta('all', 40)).toBe('40\u00a0предметов');
     expect(gridMeta('stacks', 16)).toBe('16\u00a0предметов в стопках');
-    expect(gridMeta('dupes', 5)).toBe('5\u00a0дублей');
+    expect(gridMeta('dupes', 5)).toBe('5\u00a0предметов можно собрать');
     expect(gridMeta('all', 1)).toBe('1\u00a0предмет');
     expect(gridMeta('stacks', 3)).toBe('3\u00a0предмета в стопках');
-    expect(gridMeta('dupes', 22)).toBe('22\u00a0дубля');
-    expect(gridMeta('dupes', 21)).toBe('21\u00a0дубль');
+    expect(gridMeta('dupes', 22)).toBe('22\u00a0предмета можно собрать');
+    expect(gridMeta('dupes', 21)).toBe('21\u00a0предмет можно собрать');
+    expect(gridMeta('dupes', 11)).toBe('11\u00a0предметов можно собрать');
   });
 
   it('has English forms too', () => {
@@ -27,7 +28,19 @@ describe('grid header', () => {
     expect(gridMeta('all', 1)).toBe('1\u00a0item');
     expect(gridMeta('all', 40)).toBe('40\u00a0items');
     expect(gridMeta('stacks', 16)).toBe('16\u00a0items in stacks');
-    expect(gridMeta('dupes', 5)).toBe('5\u00a0duplicates');
+    expect(gridMeta('dupes', 1)).toBe('1\u00a0item can be combined');
+    expect(gridMeta('dupes', 5)).toBe('5\u00a0items can be combined');
+  });
+
+  it('calls the filter of items with several entries «Можно собрать» and keeps «Записей в Steam»', () => {
+    setLang('ru');
+    expect(t('filters.dupes')).toBe('Можно собрать');
+    expect(t('filters.dupesHint')).toBe('Предметы из нескольких записей: их можно собрать в стопки');
+    expect(t('stats.records')).toBe('Записей в Steam');
+    setLang('en');
+    expect(t('filters.dupes')).toBe('Can combine');
+    expect(t('filters.dupesHint')).toBe('Items made of several entries that can be combined into stacks');
+    expect(t('stats.records')).toBe('Entries in Steam');
   });
 });
 
