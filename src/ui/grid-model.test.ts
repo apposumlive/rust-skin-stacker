@@ -32,14 +32,14 @@ describe('grid header', () => {
     expect(gridMeta('dupes', 5)).toBe('5\u00a0items can be combined');
   });
 
-  it('calls the filter of items with several entries «Можно собрать» and keeps «Записей в Steam»', () => {
+  it('calls the filter of items whose entries combine «Можно собрать» and keeps «Записей в Steam»', () => {
     setLang('ru');
     expect(t('filters.dupes')).toBe('Можно собрать');
-    expect(t('filters.dupesHint')).toBe('Предметы из нескольких записей: их можно собрать в стопки');
+    expect(t('filters.dupesHint')).toBe('Предметы, чьи записи можно собрать в стопки');
     expect(t('stats.records')).toBe('Записей в Steam');
     setLang('en');
     expect(t('filters.dupes')).toBe('Can combine');
-    expect(t('filters.dupesHint')).toBe('Items made of several entries that can be combined into stacks');
+    expect(t('filters.dupesHint')).toBe('Items whose entries can be combined into stacks');
     expect(t('stats.records')).toBe('Entries in Steam');
   });
 });

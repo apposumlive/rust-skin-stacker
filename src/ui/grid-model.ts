@@ -5,7 +5,7 @@ import type { Filter, SelectMode, Show } from '../model';
 import type { Panel } from '../store';
 import type { Inventory } from '../types';
 
-/** Заголовок сетки по тому, что в ней сейчас: «40 предметов», «16 предметов в стопках», «5 дублей». */
+/** Заголовок сетки по тому, что в ней сейчас: «40 предметов», «16 предметов в стопках», «5 предметов можно собрать». */
 export function gridMeta(show: Show, count: number): string {
   return tn(`grid.meta.${show}`, count);
 }

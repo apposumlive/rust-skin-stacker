@@ -63,6 +63,16 @@ describe('model', () => {
     expect(visibleSkins(i, { ...f, sort: 'name' }).map((s) => s.key)).toEqual(['Alpha', 'Bravo', 'Charlie', 'Delta']);
   });
 
+  it('shows under «Можно собрать» and counts only items whose entries combine', () => {
+    const apart: Skin = { ...skin('Apart', []), records: [rec('a1', 2), rec('a2', 1, '9')], total: 3 };
+    const mixed: Skin = { ...skin('Mixed', []), records: [rec('m1', 3), rec('m2', 2, '9'), rec('m3', 1)], total: 6 };
+    const i = inv([apart, skin('Single', [4]), skin('Pair', [2, 1]), mixed]);
+    expect(canCombine(apart)).toBe(false);
+    expect(canCombine(mixed)).toBe(true);
+    expect(visibleSkins(i, { ...defaultFilter(), show: 'dupes' }).map((s) => s.key)).toEqual(['Mixed', 'Pair']);
+    expect(counts(i)).toEqual({ all: 4, stacks: 4, dupes: 2 });
+  });
+
   it('counts filters and totals', () => {
     const i: Inventory = { skins: [skin('A', [5, 1]), skin('B', [1]), skin('C', [1, 1])], unreadable: [{ assetid: null, amount: 2 }] };
     expect(counts(i)).toEqual({ all: 3, stacks: 1, dupes: 2 });
