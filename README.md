@@ -68,7 +68,8 @@ The second command needs the [GitHub CLI](https://cli.github.com/), signed in wi
 - Splitting a stack of A items takes A−1 requests to Steam. "Split off N" takes N requests.
 - Combining moves entries of one item into its largest entry. Entries with a different trade status (another `instanceid`) are combined into a stack of their own.
 - Requests go one at a time with a pause: 1.5 s by default, 0.5–10 s in Settings. If Steam asks to slow down, the app waits and shows a countdown.
-- A run stops after three failures in a row, when Steam stops accepting the token, or when you press Stop (after the current request).
+- If Steam refuses to split or combine a stack, the app skips the rest of that stack and goes on.
+- A run stops after three failures in a row (a refused stack counts as one), when Steam stops accepting the token, or when you press Stop (after the current request).
 - Steam sometimes merges split items back. Running Split all again is normal.
 
 ## Build from source
