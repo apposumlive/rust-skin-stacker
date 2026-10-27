@@ -8,6 +8,8 @@ permissions:
   contents: read
 
 jobs:
+  # Здесь работает код зависимостей (npm, cargo, сборочные скрипты),
+  # поэтому только чтение: ни записи в репозиторий, ни подписи, ни GITHUB_TOKEN.
   build:
     name: build (${{ matrix.os }})
     strategy:
@@ -19,13 +21,13 @@ jobs:
           - os: ubuntu-24.04
             bundles: appimage,deb,rpm
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     permissions:
-      contents: write # tauri-action создаёт черновик релиза и загружает в него файлы
-      id-token: write # подтверждение происхождения
-      attestations: write
-      artifact-metadata: write
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Linux packages for Tauri
         if: runner.os == 'Linux'
@@ -33,40 +35,41 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
+      # До npm ci: читается только JSON, код зависимостей ещё не запускался.
+      - name: Tag matches the app version
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG does not match version $version in src-tauri/tauri.conf.json"
+            exit 1
+          fi
+          echo "Tag $TAG matches version $version"
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: './src-tauri -> target'
 
       - run: npm ci
 
-      - uses: tauri-apps/tauri-action@v1
+      - name: Build
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Rust Skin Stacker ${{ github.ref_name }}
-          releaseDraft: true
-          prerelease: false
-          uploadUpdaterJson: false
-          args: --bundles ${{ matrix.bundles }}
-          releaseBody: |
-            Builds for Windows and Linux. Not affiliated with Valve or Facepunch.
+          BUNDLES: ${{ matrix.bundles }}
+        run: npm run tauri build -- --bundles "$BUNDLES"
 
-            **Check a file before you run it**
-            - Checksum: compare the file with `SHA256SUMS` — `sha256sum -c SHA256SUMS --ignore-missing` on Linux, `Get-FileHash <file>` on Windows.
-            - Provenance: `gh attestation verify <file> --repo ${{ github.repository }}`
-              It needs the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`.
-
-            Windows SmartScreen may warn about an unsigned app. The README explains what to do.
-
-      - name: Collect files for attestation
+      - name: Collect files
         shell: bash
         run: |
           mkdir release-files
@@ -77,26 +80,26 @@ jobs:
           done
           ls -l release-files
 
-      - uses: actions/attest@v4
-        with:
-          subject-path: release-files/*
-
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: files-${{ runner.os }}
           path: release-files/*
           if-no-files-found: error
+          overwrite: true
 
-  checksums:
+  # Права на запись и подпись — только здесь. Код проекта и зависимостей здесь не запускается:
+  # нет checkout, npm и cargo, только готовые файлы из build.
+  release:
     needs: build
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
-      contents: write
-      id-token: write
+      contents: write # черновик релиза
+      id-token: write # подтверждение происхождения
       attestations: write
       artifact-metadata: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: files-*
           merge-multiple: true
@@ -108,19 +111,27 @@ jobs:
           sha256sum * > ../SHA256SUMS
           cat ../SHA256SUMS
 
-      - uses: actions/attest@v4
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: files/*
+
+      - uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: SHA256SUMS
 
-      - name: Check names and upload SHA256SUMS to the draft release
+      - name: Draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
+          NOTES: |
+            Builds for Windows and Linux. Not affiliated with Valve or Facepunch.
+
+            **Check a file before you run it**
+            - Checksum: compare the file with `SHA256SUMS` — `sha256sum -c SHA256SUMS --ignore-missing` on Linux, `Get-FileHash <file>` on Windows.
+            - Provenance: `gh attestation verify <file> --repo ${{ github.repository }}`
+              It needs the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`.
+
+            Windows SmartScreen may warn about an unsigned app. The README explains what to do.
         run: |
-          gh release view "$TAG" --repo "$REPO" --json assets -q '.assets[].name' > assets.txt
-          for f in files/*; do
-            name="$(basename "$f")"
-            grep -qxF "$name" assets.txt || { echo "::error::$name is not among the release files"; exit 1; }
-          done
-          gh release upload "$TAG" SHA256SUMS --repo "$REPO" --clobber
+          gh release create "$TAG" --verify-tag --draft --title "Rust Skin Stacker $TAG" --notes "$NOTES" --repo "$REPO" files/* SHA256SUMS
