@@ -30,14 +30,34 @@ describe('i18n', () => {
 
   it('substitutes variables and plural forms', () => {
     setLang('ru');
-    expect(t('time.seconds', { n: 3 })).toBe('~3 с');
-    expect(tn('plan.requests', 1)).toBe('1 запрос');
-    expect(tn('plan.requests', 2)).toBe('2 запроса');
-    expect(tn('plan.requests', 5)).toBe('5 запросов');
-    expect(tn('plan.requests', 21)).toBe('21 запрос');
+    expect(t('time.seconds', { n: 3 })).toBe('~3\u00a0с');
+    expect(tn('plan.requests', 1)).toBe('1\u00a0запрос');
+    expect(tn('plan.requests', 2)).toBe('2\u00a0запроса');
+    expect(tn('plan.requests', 5)).toBe('5\u00a0запросов');
+    expect(tn('plan.requests', 21)).toBe('21\u00a0запрос');
     setLang('en');
-    expect(tn('plan.requests', 1)).toBe('1 request');
-    expect(tn('plan.requests', 72)).toBe('72 requests');
+    expect(tn('plan.requests', 1)).toBe('1\u00a0request');
+    expect(tn('plan.requests', 72)).toBe('72\u00a0requests');
+  });
+
+  it('keeps numbers and their units together with a no-break space', () => {
+    // В узкой колонке (304 px) обычный пробел отрывал «шт.», «запрос», «с» и «мин» от числа.
+    for (const [lang, dict] of [
+      ['en', en],
+      ['ru', ru],
+    ] as const) {
+      for (const [key, text] of Object.entries(dict as Record<string, string>)) {
+        expect(text, `${lang} ${key}`).not.toMatch(/\{(count|n|value|seconds|h|m)\} /);
+        expect(text, `${lang} ${key}`).not.toMatch(/\d /);
+      }
+    }
+    setLang('ru');
+    expect(t('card.total', { count: '41' })).toBe('41 шт.');
+    expect(t('item.cost', { requests: tn('plan.requests', 1), time: t('time.seconds', { n: 1 }) })).toBe('1 запрос, ~1 с');
+    expect(t('time.hoursMinutes', { h: 1, m: 5 })).toBe('~1 ч 5 мин');
+    setLang('en');
+    expect(t('card.total', { count: '41' })).toBe('41 pcs');
+    expect(t('settings.delayValue', { value: '1.5' })).toBe('1.5 s');
   });
 
   it('returns the key when the text is missing', () => {

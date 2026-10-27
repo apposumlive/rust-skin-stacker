@@ -82,6 +82,8 @@
 .card .nm { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .sub { font-size: 12px; color: var(--text-2); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .card .becomes { color: var(--acc-text); font-weight: 700; }
+/* Шаги скина прошли: нейтрально, не зелёным — часть из них могла не пройти. */
+.card .processed { color: var(--text-2); }
 .imgbox { height: 96px; margin-top: 8px; border-radius: 8px; background: var(--img); display: grid; place-items: center; }
 .imgbox img { width: 84px; height: 84px; object-fit: contain; }
 .imgbox .ti { font-size: 28px; color: var(--text-3); }

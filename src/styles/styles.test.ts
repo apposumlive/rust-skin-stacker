@@ -82,6 +82,10 @@ describe('palette', () => {
     expect(prop(rule(mainCss, '.card .becomes'), 'color')).toBe('var(--acc-text)');
     expect(prop(rule(mainCss, '.bulk.active'), 'color')).toBe('var(--acc-text)');
   });
+
+  it('writes «processed» on a card neutrally, not in green', () => {
+    expect(prop(rule(mainCss, '.card .processed'), 'color')).toBe('var(--text-2)');
+  });
 });
 
 describe('layout', () => {
@@ -116,6 +120,16 @@ describe('layout', () => {
     const narrow = media(mainCss, '(max-width: 1099px)');
     expect(columnsFor(grid(1024, narrow), MIN_CARD_WIDTH, GAP)).toBe(3);
     expect(columnsFor(grid(1280, mainCss), MIN_CARD_WIDTH, GAP)).toBe(4);
+  });
+
+  it('puts the split-off counter under its heading in the narrow panel', () => {
+    // В широкой панели счётчик справа от заголовка, в одну строку.
+    expect(rule(panelCss, '.sec-h')).not.toMatch(/flex-direction/);
+    const narrow = rule(media(panelCss, '(max-width: 1099px)'), '.sec-h');
+    expect(prop(narrow, 'flex-direction')).toBe('column');
+    expect(prop(narrow, 'align-items')).toBe('flex-start');
+    // Узкая колонка включается при той же ширине окна.
+    expect(prop(rule(media(mainCss, '(max-width: 1099px)'), '.wrap'), 'grid-template-columns')).toMatch(/ 304px$/);
   });
 
   it('keeps the token field to about three lines', () => {

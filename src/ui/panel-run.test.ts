@@ -29,7 +29,7 @@ const docked = (root: unknown) => byClass(root, 'dock').flatMap((dock) => byTag(
 const texts = (els: FakeEl[]) => els.map((el) => el.textContent);
 
 function running(patch: Partial<Running> = {}): Running {
-  return { kind: 'running', plan, done: 0, total: 4, errors: 0, key: '', waitUntil: null, stopping: false, ...patch };
+  return { kind: 'running', plan, done: 0, total: 4, errors: 0, key: '', processed: [], waitUntil: null, stopping: false, ...patch };
 }
 
 beforeEach(() => {
@@ -165,12 +165,24 @@ describe('main element and docked buttons', () => {
     expect(texts(mains(planView(empty, false, state)))).toEqual([t('plan.close')]);
   });
 
-  it('focuses Stop while the run goes and names the progress bar like the heading', () => {
+  it('focuses the heading while the run goes, not Stop, and names the progress bar like the heading', () => {
     const view = runningView(running(), state, vi.fn());
-    expect(texts(mains(view))).toEqual([t('run.stop')]);
-    expect(texts(docked(view))).toEqual([t('run.stop')]);
     const heading = t('run.title', { op: t('op.splitAll') });
+    const main = mains(view);
+    expect(main).toHaveLength(1);
+    expect(main[0].tag).toBe('h2');
+    expect(main[0].textContent).toBe(heading);
+    expect(main[0].getAttribute('tabindex')).toBe('-1');
     expect(byClass(view, 'progress')[0].getAttribute('aria-label')).toBe(heading);
+  });
+
+  it('keeps Stop docked and reachable by Tab', () => {
+    const view = runningView(running(), state, vi.fn());
+    const [stop] = docked(view);
+    expect(texts(docked(view))).toEqual([t('run.stop')]);
+    expect(stop.attrs.has('data-main')).toBe(false);
+    expect(stop.getAttribute('tabindex')).toBeNull();
+    expect(stop.disabled).toBe(false);
   });
 
   it('focuses the heading of the result, which Tab skips', () => {

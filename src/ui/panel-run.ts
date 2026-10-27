@@ -134,10 +134,12 @@ export function runningView(panel: Running, state: State, tick: (fn: () => void)
   const left = h('p', { class: 'muted num' });
   const wait = h('p', { class: 'wait num', role: 'status' });
   const stopLabel = h('span', {});
-  const stop = h('button', { class: 'btn danger wide', type: 'button', 'data-main': true, onclick: stopRun }, icon('player-stop'), stopLabel);
+  // Фокус после «Запустить» — на заголовок, не на «Остановить»: случайный второй Enter или пробел остановил бы запуск.
+  // «Остановить» — обычная кнопка, до неё доходят по Tab.
+  const stop = h('button', { class: 'btn danger wide', type: 'button', onclick: stopRun }, icon('player-stop'), stopLabel);
   const el = panelView(
     'run-view',
-    [h('h2', { class: 'plan-h' }, heading), bar, progress, current, left, wait, h('p', { class: 'foot' }, t('run.browse'))],
+    [mainHeading('plan-h', heading), bar, progress, current, left, wait, h('p', { class: 'foot' }, t('run.browse'))],
     [stop],
   );
   const parts: RunningParts = { bar, fill, progress, current, left, wait, stop, stopLabel };

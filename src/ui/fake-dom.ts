@@ -74,6 +74,25 @@ export class FakeEl {
     this.children = nodes.map((node) => (typeof node === 'string' ? new FakeText(node) : node));
   }
 
+  get firstElementChild(): FakeEl | null {
+    return this.children.find((child): child is FakeEl => child instanceof FakeEl) ?? null;
+  }
+
+  contains(node: unknown): boolean {
+    return findAll(this, (el) => el === node).length > 0;
+  }
+
+  /** Только селектор вида `[атрибут]`: панели этого хватает. */
+  querySelector(selector: string): FakeEl | null {
+    const attr = /^\[([\w-]+)\]$/.exec(selector)?.[1];
+    if (!attr) throw new Error(`fake-dom: unsupported selector ${selector}`);
+    return findAll(this, (el) => el !== this && el.attrs.has(attr))[0] ?? null;
+  }
+
+  focus(): void {
+    fakeDocument.activeElement = this;
+  }
+
   set textContent(value: string) {
     this.children = value === '' ? [] : [new FakeText(value)];
   }
@@ -86,6 +105,9 @@ export class FakeEl {
 export const fakeDocument = {
   createElement: (tag: string) => new FakeEl(tag),
   createTextNode: (data: string) => new FakeText(data),
+  body: new FakeEl('body'),
+  /** Куда последним перевели фокус (`focus()`); тест сбрасывает сам. */
+  activeElement: null as FakeEl | null,
 };
 
 /** Все элементы дерева (сам корень первым), подходящие под условие. */

@@ -61,7 +61,7 @@ export function createPanel(el: HTMLElement): Part {
       const fresh = view(state, tick);
       if (enter) fresh.classList.add('enter');
       el.replaceChildren(fresh);
-      // Главный элемент нового вида: «Запустить» в плане, «Остановить» в ходе, заголовок в остальных.
+      // Главный элемент нового вида: «Запустить» в плане, заголовок в ходе и остальных. «Остановить» — только по Tab.
       if (takesFocus(place) && el.isConnected) fresh.querySelector<HTMLElement>('[data-main]')?.focus({ preventScroll: true });
     },
     destroy() {

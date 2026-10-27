@@ -50,8 +50,8 @@ function demoInventory(): Inventory {
   return { skins: skins.sort((a, b) => a.key.localeCompare(b.key)), unreadable: [] };
 }
 
-/** Упрощённая копия plan::build из ядра — только для демо. */
-function demoPlan(inventory: Inventory, operation: Operation): Plan {
+/** Упрощённая копия plan::build из ядра — только для демо. Очередь полная: по ней демо идёт шагами. */
+function demoQueue(inventory: Inventory, operation: Operation): { requests: number; queue: Plan['queue']; after: SkinAfter[] } {
   const keys =
     operation.kind === 'splitSelected' || operation.kind === 'combineSelected'
       ? new Set(operation.keys)
@@ -87,8 +87,17 @@ function demoPlan(inventory: Inventory, operation: Operation): Plan {
       after.push({ key: skin.key, stacks: skin.total > 1 ? [skin.total] : [], singles: skin.total > 1 ? 0 : 1 });
     }
   }
+  return { requests, queue, after };
+}
+
+function demoPlan(inventory: Inventory, operation: Operation): Plan {
+  const { requests, queue, after } = demoQueue(inventory, operation);
   return { operation, requests, stacks: queue.length, queue: queue.slice(0, 5), more: Math.max(0, queue.length - 5), after };
 }
+
+/** Ключ скина каждого шага по порядку — как шаги ядра. */
+const demoSteps = (inventory: Inventory, operation: Operation): string[] =>
+  demoQueue(inventory, operation).queue.flatMap((item) => Array<string>(item.requests).fill(item.key));
 
 function applyPlan(inventory: Inventory, plan: Plan): Inventory {
   const byKey = new Map(plan.after.map((a) => [a.key, a]));
@@ -127,10 +136,11 @@ export function createMockApi(): Api {
     },
     async start(operation) {
       const plan = demoPlan(inventory, operation);
+      const steps = demoSteps(inventory, operation);
       stopped = false;
       let done = 0;
       while (done < plan.requests && !stopped) {
-        listener?.({ kind: 'request', done, total: plan.requests, errors: 0, key: plan.queue[0]?.key ?? '' });
+        listener?.({ kind: 'request', done, total: plan.requests, errors: 0, key: steps[done] ?? '' });
         await wait(120);
         done += 1;
       }

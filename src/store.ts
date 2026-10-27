@@ -14,6 +14,8 @@ export type Panel =
       total: number;
       errors: number;
       key: string;
+      /** Ключи скинов, чьи шаги уже прошли (успешно или нет), в порядке обработки. */
+      processed: string[];
       /** Конец ожидания по 429, `Date.now()`-миллисекунды. */
       waitUntil: number | null;
       stopping: boolean;
