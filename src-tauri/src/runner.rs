@@ -1,5 +1,7 @@
 //! Выполняет шаги по одному с паузой между запросами и сообщает окну о ходе.
-//! Останавливается после трёх неудач подряд, при 401/403 и по кнопке «Остановить».
+//! Стопку, которую Steam окончательно отклонил, пропускает целиком.
+//! Останавливается после трёх неудач подряд (отклонённая стопка — одна неудача),
+//! при 401/403 и по кнопке «Остановить».
 
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -12,6 +14,7 @@ use crate::plan::{self, Step};
 use crate::steam::{SleepFn, SteamClient, SteamError};
 use crate::token::Token;
 
+/// Сколько неудачных запросов или отклонённых стопок подряд останавливают запуск.
 pub const MAX_FAILURES_IN_ROW: u32 = 3;
 /// Сколько раз на одном шаге ждать по 429, прежде чем считать шаг неудачным.
 pub const MAX_RATE_WAITS: u32 = 3;
@@ -46,7 +49,7 @@ impl StackApi for SteamStacker {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum Progress {
-    /// Перед каждым запросом и один раз в конце (`key` пустой).
+    /// Перед каждым запросом, после пропуска отклонённой стопки и один раз в конце (`key` пустой).
     Request {
         done: u32,
         total: u32,
@@ -110,8 +113,14 @@ pub async fn run<A: StackApi>(
         total,
     };
     let mut in_row = 0;
+    // Шаги отклонённых стопок: не отправляются и уже посчитаны в `errors`.
+    let mut skipped = vec![false; steps.len()];
     for (i, step) in steps.iter().enumerate() {
+        if skipped[i] {
+            continue;
+        }
         // Пауза только между запросами и не после нажатия «Остановить».
+        // Первый шаг пропущенным не бывает, поэтому `i > 0` — уже был запрос.
         if i > 0 && !stop.load(Ordering::SeqCst) {
             sleep(config.delay()).await;
         }
@@ -152,6 +161,23 @@ pub async fn run<A: StackApi>(
                     step.key(),
                     describe(&failure)
                 ));
+                if matches!(&failure, Failure::Steam(e) if is_refusal(e)) {
+                    let n = skip_rest_of_stack(steps, i, &mut skipped);
+                    if n > 0 {
+                        outcome.errors += n;
+                        journal.add(format!(
+                            "\"{}\": Steam refused this stack, skipping {n} remaining {}",
+                            step.key(),
+                            if n == 1 { "step" } else { "steps" }
+                        ));
+                        emit(Progress::Request {
+                            done: outcome.done,
+                            total,
+                            errors: outcome.errors,
+                            key: step.key().to_string(),
+                        });
+                    }
+                }
                 if in_row >= MAX_FAILURES_IN_ROW {
                     journal.add("three failures in a row, stopping");
                     outcome.reason = StopReason::TooManyFailures;
@@ -213,6 +239,48 @@ async fn send<A: StackApi>(
             other => return other.map_err(Failure::Steam),
         }
     }
+}
+
+/// Окончательный отказ Steam: повтор не поможет, остаток стопки слать незачем.
+/// 401/403 (токен) и 429 (ожидание) обрабатываются отдельно и сюда не относятся.
+/// Сеть, 5xx и непонятный ответ — исход неизвестен, это не отказ.
+fn is_refusal(error: &SteamError) -> bool {
+    match error {
+        SteamError::Rejected(_) => true,
+        SteamError::Http(status) => {
+            (400..500).contains(status) && !matches!(status, 401 | 403 | 429)
+        }
+        _ => false,
+    }
+}
+
+/// Одна и та же стопка: разделение — тот же `assetid`, сборка — та же стопка назначения того же скина.
+fn same_stack(a: &Step, b: &Step) -> bool {
+    match (a, b) {
+        (Step::Split { assetid: x, .. }, Step::Split { assetid: y, .. }) => x == y,
+        (
+            Step::Combine {
+                key: k1, dest: d1, ..
+            },
+            Step::Combine {
+                key: k2, dest: d2, ..
+            },
+        ) => k1 == k2 && d1.assetid == d2.assetid,
+        _ => false,
+    }
+}
+
+/// Отмечает пропущенными оставшиеся шаги стопки шага `i` (не обязательно идущие подряд).
+/// Возвращает, сколько шагов отмечено.
+fn skip_rest_of_stack(steps: &[Step], i: usize, skipped: &mut [bool]) -> u32 {
+    let mut n = 0;
+    for (j, later) in steps.iter().enumerate().skip(i + 1) {
+        if !skipped[j] && same_stack(&steps[i], later) {
+            skipped[j] = true;
+            n += 1;
+        }
+    }
+    n
 }
 
 fn action(step: &Step) -> &'static str {
@@ -502,6 +570,241 @@ mod tests {
                 total: 4
             }
         );
+    }
+
+    /// Шаги разделения: `(скин, assetid, сколько шагов)`.
+    fn split_stacks(stacks: &[(&str, &str, usize)]) -> Vec<Step> {
+        stacks
+            .iter()
+            .flat_map(|&(key, assetid, n)| {
+                (0..n).map(move |_| Step::Split {
+                    key: key.into(),
+                    assetid: assetid.into(),
+                })
+            })
+            .collect()
+    }
+
+    fn combine(key: &str, from: &str, dest: &str) -> Step {
+        Step::Combine {
+            key: key.into(),
+            from: record(from, 1),
+            dest: record(dest, 5),
+            quantity: 1,
+        }
+    }
+
+    fn assert_all_counted(outcome: &RunOutcome) {
+        assert_eq!(outcome.reason, StopReason::Finished);
+        assert_eq!(outcome.done + outcome.errors, outcome.total, "{outcome:?}");
+    }
+
+    #[test]
+    fn only_a_final_answer_of_steam_is_a_refusal() {
+        for e in [
+            SteamError::Rejected(8),
+            SteamError::Rejected(2),
+            SteamError::Http(400),
+            SteamError::Http(404),
+            SteamError::Http(499),
+        ] {
+            assert!(is_refusal(&e), "{e:?}");
+        }
+        for e in [
+            SteamError::Http(401),
+            SteamError::Http(403),
+            SteamError::Http(429),
+            SteamError::Http(302),
+            SteamError::Http(500),
+            SteamError::Http(503),
+            SteamError::Auth(401),
+            SteamError::RateLimited { retry_after: None },
+            SteamError::Network("connection failed"),
+            SteamError::BadResponse,
+        ] {
+            assert!(!is_refusal(&e), "{e:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_stack_is_skipped_and_the_run_goes_on() {
+        let api = FakeApi::new(vec![Err(SteamError::Rejected(8))]);
+        let steps = split_stacks(&[("Alpha", "1001", 3), ("Bravo", "1002", 2)]);
+        let r = go(&api, &steps, &AtomicBool::new(false)).await;
+        assert_eq!(api.calls(), vec!["split 1001", "split 1002", "split 1002"]);
+        assert_eq!(
+            r.outcome,
+            RunOutcome {
+                reason: StopReason::Finished,
+                done: 2,
+                errors: 3,
+                total: 5
+            }
+        );
+        assert_all_counted(&r.outcome);
+        // Пауза только между отправленными запросами, не за пропущенные шаги.
+        assert_eq!(r.slept, vec![Duration::from_millis(1500); 2]);
+        // Сразу после пропуска окно видит новые числа.
+        assert_eq!(
+            r.events[1],
+            Progress::Request {
+                done: 0,
+                total: 5,
+                errors: 3,
+                key: "Alpha".into()
+            }
+        );
+        let text = r.journal.text();
+        assert!(
+            text.contains("\"Alpha\": Steam refused this stack, skipping 2 remaining steps"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("1001"),
+            "no asset IDs in the journal: {text}"
+        );
+    }
+
+    /// Шаги одной стопки могут идти не подряд: пропускаются все, а чужие отправляются.
+    #[tokio::test]
+    async fn a_refused_stack_is_skipped_even_when_its_steps_are_not_in_a_row() {
+        let api = FakeApi::new(vec![Err(SteamError::Http(400))]);
+        let steps = split_stacks(&[
+            ("Alpha", "1001", 1),
+            ("Bravo", "1002", 1),
+            ("Alpha", "1001", 1),
+            ("Bravo", "1002", 1),
+            ("Alpha", "1001", 1),
+        ]);
+        let r = go(&api, &steps, &AtomicBool::new(false)).await;
+        assert_eq!(api.calls(), vec!["split 1001", "split 1002", "split 1002"]);
+        assert_eq!(r.outcome.errors, 3);
+        assert_all_counted(&r.outcome);
+        assert!(r.journal.text().contains("skipping 2 remaining steps"));
+    }
+
+    /// Отклонённая стопка — одна неудача: три разные стопки подряд останавливают запуск.
+    #[tokio::test]
+    async fn three_refused_stacks_in_a_row_stop_the_run() {
+        let refused = || Err(SteamError::Rejected(8));
+        let api = FakeApi::new(vec![refused(), refused(), refused()]);
+        let steps = split_stacks(&[
+            ("Alpha", "1001", 3),
+            ("Bravo", "1002", 3),
+            ("Charlie", "1003", 3),
+            ("Delta", "1004", 3),
+        ]);
+        let r = go(&api, &steps, &AtomicBool::new(false)).await;
+        assert_eq!(api.calls(), vec!["split 1001", "split 1002", "split 1003"]);
+        assert_eq!(
+            r.outcome,
+            RunOutcome {
+                reason: StopReason::TooManyFailures,
+                done: 0,
+                errors: 9,
+                total: 12
+            }
+        );
+        assert!(r.journal.text().contains("three failures in a row"));
+    }
+
+    /// Успех между отклонёнными стопками сбрасывает счётчик «подряд».
+    #[tokio::test]
+    async fn a_success_between_refused_stacks_resets_the_count() {
+        let refused = || Err(SteamError::Rejected(8));
+        let api = FakeApi::new(vec![refused(), refused(), Ok(()), refused(), refused()]);
+        let steps = split_stacks(&[
+            ("Alpha", "1001", 2),
+            ("Bravo", "1002", 2),
+            ("Charlie", "1003", 1),
+            ("Delta", "1004", 2),
+            ("Echo", "1005", 2),
+        ]);
+        let r = go(&api, &steps, &AtomicBool::new(false)).await;
+        assert_eq!(api.calls().len(), 5);
+        assert_eq!(r.outcome.done, 1);
+        assert_eq!(r.outcome.errors, 8);
+        assert_all_counted(&r.outcome);
+        let text = r.journal.text();
+        assert!(
+            text.contains("\"Alpha\": Steam refused this stack, skipping 1 remaining step"),
+            "{text}"
+        );
+        assert!(!text.contains("1 remaining steps"), "{text}");
+    }
+
+    /// Сеть, 5xx и непонятный ответ — исход неизвестен: остаток стопки отправляется.
+    #[tokio::test]
+    async fn an_unknown_outcome_does_not_skip_the_rest_of_the_stack() {
+        for error in [
+            SteamError::Network("connection failed"),
+            SteamError::Http(500),
+            SteamError::BadResponse,
+        ] {
+            let api = FakeApi::new(vec![Err(error.clone())]);
+            let steps = split_stacks(&[("Alpha", "1001", 3)]);
+            let r = go(&api, &steps, &AtomicBool::new(false)).await;
+            assert_eq!(api.calls().len(), 3, "{error:?}");
+            assert_eq!(
+                r.outcome,
+                RunOutcome {
+                    reason: StopReason::Finished,
+                    done: 2,
+                    errors: 1,
+                    total: 3
+                },
+                "{error:?}"
+            );
+            assert!(
+                !r.journal.text().contains("refused this stack"),
+                "{error:?}"
+            );
+        }
+    }
+
+    /// Сборка: пропускаются шаги в ту же стопку назначения того же скина, остальные — нет.
+    #[tokio::test]
+    async fn a_refused_combine_skips_the_steps_into_the_same_destination() {
+        let api = FakeApi::new(vec![Err(SteamError::Rejected(8))]);
+        let steps = vec![
+            combine("Alpha", "2", "1"),
+            combine("Alpha", "3", "1"),
+            combine("Alpha", "6", "5"),
+            combine("Alpha", "4", "1"),
+            combine("Bravo", "8", "7"),
+        ];
+        let r = go(&api, &steps, &AtomicBool::new(false)).await;
+        assert_eq!(
+            api.calls(),
+            vec!["combine 2->1 x1", "combine 6->5 x1", "combine 8->7 x1"]
+        );
+        assert_eq!(
+            r.outcome,
+            RunOutcome {
+                reason: StopReason::Finished,
+                done: 2,
+                errors: 3,
+                total: 5
+            }
+        );
+        assert_all_counted(&r.outcome);
+        let text = r.journal.text();
+        assert!(
+            text.contains("\"Alpha\": Steam refused this stack, skipping 2 remaining steps"),
+            "{text}"
+        );
+    }
+
+    /// Отказ на последнем шаге стопки: пропускать нечего, строки о пропуске нет.
+    #[tokio::test]
+    async fn a_refused_last_step_skips_nothing() {
+        let api = FakeApi::new(vec![Ok(()), Err(SteamError::Rejected(8))]);
+        let steps = split_stacks(&[("Alpha", "1001", 2), ("Bravo", "1002", 1)]);
+        let r = go(&api, &steps, &AtomicBool::new(false)).await;
+        assert_eq!(api.calls().len(), 3);
+        assert_eq!(r.outcome.errors, 1);
+        assert_all_counted(&r.outcome);
+        assert!(!r.journal.text().contains("refused this stack"));
     }
 
     #[tokio::test]
