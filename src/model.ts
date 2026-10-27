@@ -56,7 +56,6 @@ export function layoutOf(skin: Skin): Layout {
 }
 
 export const hasStack = (skin: Skin): boolean => skin.records.some((r) => r.amount > 1);
-export const isDupe = (skin: Skin): boolean => skin.records.length > 1;
 
 /** Сколько штук можно отделить по одному: сумма A−1 по стопкам. */
 export function splitCapacity(skin: Skin): number {
@@ -89,7 +88,7 @@ export function apartRecords(skin: Skin): InvRecord[] {
 
 export function matches(skin: Skin, filter: Filter): boolean {
   if (filter.show === 'stacks' && !hasStack(skin)) return false;
-  if (filter.show === 'dupes' && !isDupe(skin)) return false;
+  if (filter.show === 'dupes' && !canCombine(skin)) return false;
   if (filter.categories.length > 0 && !(skin.category && filter.categories.includes(skin.category.id))) return false;
   const query = filter.search.trim().toLocaleLowerCase();
   return !query || skin.name.toLocaleLowerCase().includes(query) || skin.key.toLocaleLowerCase().includes(query);
@@ -105,7 +104,7 @@ export function counts(inventory: Inventory): Counts {
   return {
     all: inventory.skins.length,
     stacks: inventory.skins.filter(hasStack).length,
-    dupes: inventory.skins.filter(isDupe).length,
+    dupes: inventory.skins.filter(canCombine).length,
   };
 }
 

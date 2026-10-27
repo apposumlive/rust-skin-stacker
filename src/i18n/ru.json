@@ -54,7 +54,7 @@
   "filters.all": "Все",
   "filters.stacks": "Стопки",
   "filters.dupes": "Можно собрать",
-  "filters.dupesHint": "Предметы из нескольких записей: их можно собрать в стопки",
+  "filters.dupesHint": "Предметы, чьи записи можно собрать в стопки",
   "filters.type": "Тип",
   "filters.noTypes": "Типов нет",
   "stats.total": "Всего",
