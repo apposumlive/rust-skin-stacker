@@ -53,8 +53,17 @@ export class FakeEl {
     return this.attrs.get(name) ?? null;
   }
 
-  addEventListener(type: string, handler: Handler): void {
+  /** Обработчики, повешенные на фазу перехвата (`capture: true`). */
+  captures = new Set<Handler>();
+
+  addEventListener(type: string, handler: Handler, options?: boolean | { capture?: boolean }): void {
     this.listeners.set(type, [...(this.listeners.get(type) ?? []), handler]);
+    if (options === true || (typeof options === 'object' && options.capture)) this.captures.add(handler);
+  }
+
+  removeEventListener(type: string, handler: Handler): void {
+    this.listeners.set(type, (this.listeners.get(type) ?? []).filter((known) => known !== handler));
+    this.captures.delete(handler);
   }
 
   append(...nodes: Array<FakeEl | FakeText>): void {

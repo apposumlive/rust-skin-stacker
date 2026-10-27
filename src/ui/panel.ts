@@ -4,7 +4,7 @@
 import { h } from '../dom';
 import type { State } from '../store';
 import type { Skin } from '../types';
-import { entering, focusPlace, panelStep, shownOf, takesFocus, type Shown } from './panel-diff';
+import { entering, focusPlace, panelStep, shownOf, swallowsKey, takesFocus, type Shown } from './panel-diff';
 import { patchRunning, planView, resultView, runningView } from './panel-run';
 import { hintView, itemView, multiView } from './panel-select';
 import type { Part } from './shell';
@@ -41,6 +41,11 @@ export function createPanel(el: HTMLElement): Part {
     stopTimer();
     timer = window.setInterval(fn, 1000);
   };
+  // Перехват до кнопки: автоповтор Enter после смены вида пришёл бы на новый главный элемент и нажал бы его.
+  const onKey = (e: KeyboardEvent) => {
+    if (swallowsKey(e.key, e.repeat)) e.preventDefault();
+  };
+  el.addEventListener('keydown', onKey, true);
   return {
     update(state) {
       const next = shownOf(state);
@@ -59,6 +64,9 @@ export function createPanel(el: HTMLElement): Part {
       // Главный элемент нового вида: «Запустить» в плане, «Остановить» в ходе, заголовок в остальных.
       if (takesFocus(place) && el.isConnected) fresh.querySelector<HTMLElement>('[data-main]')?.focus({ preventScroll: true });
     },
-    destroy: stopTimer,
+    destroy() {
+      stopTimer();
+      el.removeEventListener('keydown', onKey, true);
+    },
   };
 }
