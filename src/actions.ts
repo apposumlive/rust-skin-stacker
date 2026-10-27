@@ -188,7 +188,12 @@ function rereadForLanguage(): void {
   const s = getState();
   if (s.screen !== 'main' || !s.inventory || s.tokenExpired) return;
   if (s.panel.kind === 'running') rereadAfterRun = true;
-  else void loadInventory({ keepPanel: true });
+  else
+    void loadInventory({ keepPanel: true }).then(() => {
+      // Чтение сбросило план в ядре: открытый план запрашиваем заново, иначе «Запустить» скажет «инвентарь изменился».
+      const panel = getState().panel;
+      if (panel.kind === 'plan') void showPlan(panel.plan.operation);
+    });
 }
 
 /**

@@ -704,6 +704,17 @@ describe('language change', () => {
     expect(getState().panel).toEqual({ kind: 'plan', plan, changed: false });
   });
 
+  it('asks the core for the open plan again after the re-read', async () => {
+    const preview = vi.fn(async () => newPlan);
+    useApi(fakeApi({ loadInventory: async () => inv('A', 'B'), preview }));
+    setState({ panel: { kind: 'plan', plan, changed: false } });
+    await saveSettings({ language: 'ru', delayMs: 1500 });
+    await tick();
+    await tick();
+    expect(preview).toHaveBeenCalledWith(plan.operation);
+    expect(getState().panel).toEqual({ kind: 'plan', plan: newPlan, changed: false });
+  });
+
   it('does not re-read when only the pause changed', async () => {
     const load = vi.fn(async () => inv('A'));
     useApi(fakeApi({ loadInventory: load }));
