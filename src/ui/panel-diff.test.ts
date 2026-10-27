@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Panel } from '../store';
 import type { Inventory, Plan } from '../types';
-import { entering, focusPlace, panelStep, takesFocus, type Shown } from './panel-diff';
+import { entering, focusPlace, panelStep, swallowsKey, takesFocus, type Shown } from './panel-diff';
 
 const plan = (): Plan => ({ operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] });
 const inventory = (): Inventory => ({ skins: [], unreadable: [] });
@@ -123,5 +123,21 @@ describe('focus after a new view', () => {
   it('leaves the focus in the grid, the search or the settings alone', () => {
     expect(focusPlace(outside, panel, body)).toBe('elsewhere');
     expect(takesFocus('elsewhere')).toBe(false);
+  });
+});
+
+describe('held keys in the panel', () => {
+  it('swallows auto-repeated Enter and Space, so a held Enter cannot press Run and then Stop', () => {
+    expect(swallowsKey('Enter', true)).toBe(true);
+    expect(swallowsKey(' ', true)).toBe(true);
+  });
+
+  it('lets the first press through', () => {
+    expect(swallowsKey('Enter', false)).toBe(false);
+    expect(swallowsKey(' ', false)).toBe(false);
+  });
+
+  it('lets other keys repeat: arrows move the slider, Tab moves the focus', () => {
+    for (const key of ['ArrowLeft', 'ArrowRight', 'Tab', 'a', 'Spacebar']) expect(swallowsKey(key, true)).toBe(false);
   });
 });

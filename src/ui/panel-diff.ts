@@ -54,3 +54,10 @@ export function focusPlace(active: Element | null, panel: Element, body: Element
  * («Запустить», «Отмена», «Закрыть»), и фокус упал бы на <body>. Фокус в сетке или поиске не трогаем.
  */
 export const takesFocus = (place: FocusPlace): boolean => place !== 'elsewhere';
+
+/**
+ * Глотать ли нажатие в панели: Enter и пробел с автоповтором. Панель переводит фокус на главный элемент нового вида,
+ * и удержанный Enter на «Отделить N» иначе нажал бы «Запустить» невидимо для человека, а следующий повтор — «Остановить».
+ * Первое нажатие проходит как обычно; стрелки (ползунок) повторяются.
+ */
+export const swallowsKey = (key: string, repeat: boolean): boolean => repeat && (key === 'Enter' || key === ' ');
