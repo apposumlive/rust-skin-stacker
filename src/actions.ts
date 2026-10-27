@@ -142,7 +142,15 @@ export async function runPlan(plan: Plan): Promise<void> {
 }
 
 function running(plan: Plan): Panel {
-  return { kind: 'running', plan, done: 0, total: plan.requests, errors: 0, key: '', waitUntil: null, stopping: false };
+  return { kind: 'running', plan, done: 0, total: plan.requests, errors: 0, key: '', processed: [], waitUntil: null, stopping: false };
+}
+
+/**
+ * Ключ сменился с A на B — шаги A прошли, A обработан. Последнее событие приходит с пустым ключом и делает
+ * обработанным последний скин. Ничего не добавилось — тот же массив: сетка не пересчитывает отметки зря.
+ */
+function processedAfter(processed: string[], was: string, key: string): string[] {
+  return was && was !== key && !processed.includes(was) ? [...processed, was] : processed;
 }
 
 function onProgress(progress: Progress): void {
@@ -150,7 +158,8 @@ function onProgress(progress: Progress): void {
   if (panel.kind !== 'running') return;
   if (progress.kind === 'request') {
     const { done, total, errors, key } = progress;
-    setState({ panel: { ...panel, done, total, errors, key, waitUntil: null } });
+    const processed = processedAfter(panel.processed, panel.key, key);
+    setState({ panel: { ...panel, done, total, errors, key, processed, waitUntil: null } });
   } else {
     setState({ panel: { ...panel, waitUntil: Date.now() + progress.seconds * 1000 } });
   }

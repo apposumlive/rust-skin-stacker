@@ -7,7 +7,7 @@ const plan = (): Plan => ({ operation: { kind: 'splitAll' }, requests: 4, stacks
 const inventory = (): Inventory => ({ skins: [], unreadable: [] });
 
 function running(p: Plan, patch: Partial<Extract<Panel, { kind: 'running' }>> = {}): Panel {
-  return { kind: 'running', plan: p, done: 0, total: p.requests, errors: 0, key: '', waitUntil: null, stopping: false, ...patch };
+  return { kind: 'running', plan: p, done: 0, total: p.requests, errors: 0, key: '', processed: [], waitUntil: null, stopping: false, ...patch };
 }
 
 function shown(panel: Panel, over: Partial<Shown> = {}): Shown {

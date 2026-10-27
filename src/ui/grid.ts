@@ -1,5 +1,5 @@
 // Сетка карточек. Виртуальная: в DOM только видимые ряды, поэтому тысячи записей не тормозят.
-// Карточки живут, пока не сменился список: выбор, «станет …» и фокус правятся на месте, а при прокрутке
+// Карточки живут, пока не сменился список: выбор, «станет …», «обработано» и фокус правятся на месте, а при прокрутке
 // создаются только вошедшие ряды. Так значки не мигают, а клик не теряется, если между нажатием и отпусканием
 // пришло обновление (тик запуска, закрытие меню).
 
@@ -10,7 +10,7 @@ import { errorText, t } from '../i18n';
 import { layoutOf, layoutText, pillsOf, visibleSkins, type SelectMode, type Sort } from '../model';
 import type { Panel, State } from '../store';
 import type { Plan, Skin, SkinAfter } from '../types';
-import { currentKey, emptyStateOf, gridKey, gridMeta } from './grid-model';
+import { cardNote, currentKey, emptyStateOf, gridKey, gridMeta, processedKeys, type CardNote } from './grid-model';
 import type { Part } from './shell';
 import { CARD_HEIGHT, GAP, MIN_CARD_WIDTH, columnsFor, visibleRange, windowDiff, type Span } from './virtual';
 
@@ -27,6 +27,7 @@ interface Slot {
   tabbable: boolean;
   now: boolean;
   change: SkinAfter | undefined;
+  note: CardNote;
 }
 
 const totalText = (skin: Skin) => t('card.total', { count: fmtInt(skin.total) });
@@ -48,17 +49,33 @@ function makeSlot(skin: Skin, index: number): Slot {
     ),
     h('div', { class: 'layout' }, ...pillsOf(layoutOf(skin)).map((p) => h('span', { class: p.stack ? 'pill st' : 'pill' }, p.text))),
   );
-  return { el, sub, skin, selected: false, dim: false, tabbable: false, now: false, change: undefined };
+  return { el, sub, skin, selected: false, dim: false, tabbable: false, now: false, change: undefined, note: 'total' };
+}
+
+/** Строка под названием: «обработано», «станет …» или штуки. */
+function subOf(skin: Skin, change: SkinAfter | undefined, note: CardNote): Node | string {
+  if (note === 'processed') return h('span', { class: 'processed' }, t('card.processed'));
+  if (change) return h('span', { class: 'becomes' }, t('after.becomes', { layout: layoutText(change.stacks, change.singles, false) }));
+  return totalText(skin);
 }
 
 /**
  * Приводит карточку к нужному виду. `after` — раскладка «станет» из плана, пока он открыт или идёт операция;
- * `current` — ключ скина, который ядро обрабатывает сейчас. Отметок «готово» нет: при ошибках они бы соврали.
+ * `current` — ключ скина, который ядро обрабатывает сейчас; `processed` — скины, чьи шаги уже прошли.
+ * У них нейтральное «обработано», не «готово»: при ошибках оно бы соврало.
  */
-function patchSlot(slot: Slot, selected: boolean, tabbable: boolean, after: Map<string, SkinAfter> | null, current: string): void {
+function patchSlot(
+  slot: Slot,
+  selected: boolean,
+  tabbable: boolean,
+  after: Map<string, SkinAfter> | null,
+  current: string,
+  processed: ReadonlySet<string>,
+): void {
   const change = after?.get(slot.skin.key);
   const dim = after !== null && !change;
-  const now = current !== '' && slot.skin.key === current;
+  const note = cardNote(slot.skin.key, change !== undefined, current, processed);
+  const now = note === 'now';
   if (slot.selected !== selected) {
     slot.selected = selected;
     slot.el.classList.toggle('sel', selected);
@@ -76,11 +93,10 @@ function patchSlot(slot: Slot, selected: boolean, tabbable: boolean, after: Map<
     slot.now = now;
     slot.el.classList.toggle('now', now);
   }
-  if (slot.change !== change) {
+  if (slot.change !== change || slot.note !== note) {
     slot.change = change;
-    slot.sub.replaceChildren(
-      change ? h('span', { class: 'becomes' }, t('after.becomes', { layout: layoutText(change.stacks, change.singles, false) })) : totalText(slot.skin),
-    );
+    slot.note = note;
+    slot.sub.replaceChildren(subOf(slot.skin, change, note));
   }
 }
 
@@ -128,6 +144,8 @@ export function createGrid(el: HTMLElement): Part {
   let selectedSet = new Set<string>();
   let afterRef: Plan | null = null;
   let afterMemo: Map<string, SkinAfter> | null = null;
+  let processedRef: string[] | null = null;
+  let processedSet = new Set<string>();
   const selectedKeys = (selected: string[]): Set<string> => {
     if (selected !== selectedRef) {
       selectedRef = selected;
@@ -142,6 +160,14 @@ export function createGrid(el: HTMLElement): Part {
       afterMemo = plan ? new Map(plan.after.map((a) => [a.key, a])) : null;
     }
     return afterMemo;
+  };
+  const processedOf = (panel: Panel): ReadonlySet<string> => {
+    const keys = processedKeys(panel);
+    if (keys !== processedRef) {
+      processedRef = keys;
+      processedSet = new Set(keys);
+    }
+    return processedSet;
   };
 
   const order = () => list.map((s) => s.key);
@@ -198,7 +224,8 @@ export function createGrid(el: HTMLElement): Part {
     const selected = selectedKeys(state.selected);
     const after = afterOf(state.panel);
     const current = currentKey(state.panel);
-    for (const [i, slot] of slots) patchSlot(slot, selected.has(slot.skin.key), i === focusIndex, after, current);
+    const processed = processedOf(state.panel);
+    for (const [i, slot] of slots) patchSlot(slot, selected.has(slot.skin.key), i === focusIndex, after, current, processed);
     if (hadFocus && !cards.contains(document.activeElement)) focusCard(focusIndex);
   };
 

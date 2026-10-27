@@ -64,7 +64,7 @@ describe('split-off block', () => {
     expect(preview).toHaveBeenCalledTimes(1);
     expect(preview).toHaveBeenCalledWith({ kind: 'splitOff', key: 'A', count: 1 });
     await flush();
-    expect(text(line(el))).toContain('1 request');
+    expect(text(line(el))).toContain('1\u00a0request');
   });
 
   it('asks again only after the slider stops moving', async () => {
@@ -78,7 +78,7 @@ describe('split-off block', () => {
     await vi.advanceTimersByTimeAsync(110);
     expect(preview).toHaveBeenCalledTimes(2);
     expect(preview).toHaveBeenLastCalledWith({ kind: 'splitOff', key: 'A', count: 5 });
-    expect(text(line(el))).toContain('5 requests');
+    expect(text(line(el))).toContain('5\u00a0requests');
   });
 
   it('debounces the plus, minus and number field the same way', async () => {
@@ -108,7 +108,7 @@ describe('split-off block', () => {
     drag(el, 4);
     expect(text(line(el))).toBe('');
     await vi.advanceTimersByTimeAsync(150);
-    expect(text(line(el))).toContain('4 requests');
+    expect(text(line(el))).toContain('4\u00a0requests');
   });
 
   it('shows the error text when the preview fails, never the old line', async () => {
@@ -123,7 +123,7 @@ describe('split-off block', () => {
     preview.mockImplementation((op) => Promise.resolve(planFor(op)));
     drag(el, 5);
     await vi.advanceTimersByTimeAsync(150);
-    expect(text(line(el))).toContain('5 requests');
+    expect(text(line(el))).toContain('5\u00a0requests');
     expect(line(el).classList.contains('err')).toBe(false);
   });
 
@@ -159,7 +159,7 @@ describe('split-off block', () => {
     await flush();
     expect(text(line(el))).toBe('');
     await vi.advanceTimersByTimeAsync(150);
-    expect(text(line(el))).toContain('5 requests');
+    expect(text(line(el))).toContain('5\u00a0requests');
   });
 
   it('does not ask after the panel was rebuilt', async () => {
@@ -201,7 +201,7 @@ describe('split-off block', () => {
     expect(byClass(el, 'amt')).toHaveLength(0);
     expect(byClass(el, 'pri')[0].textContent).toBe(t('item.splitN', { count: '1' }));
     expect(preview).toHaveBeenCalledWith({ kind: 'splitOff', key: 'A', count: 1 });
-    expect(text(line(el))).toContain('1 request');
+    expect(text(line(el))).toContain('1\u00a0request');
   });
 });
 
@@ -211,8 +211,8 @@ describe('item view', () => {
     await flush();
     const bold = byTag(line(el), 'b');
     expect(bold).toHaveLength(1);
-    expect(bold[0].textContent).toBe('stack ×7 and 2 singles');
-    expect(text(line(el))).toBe(`${t('item.becomes')} stack ×7 and 2 singles · ${t('item.cost', { requests: '1 request', time: '~1 s' })}`);
+    expect(bold[0].textContent).toBe('stack ×7 and 2\u00a0singles');
+    expect(text(line(el))).toBe(`${t('item.becomes')} stack ×7 and 2\u00a0singles · ${t('item.cost', { requests: '1\u00a0request', time: '~1\u00a0s' })}`);
   });
 
   it('keeps the actions docked below the scrolling part and focuses the heading', () => {

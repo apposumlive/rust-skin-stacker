@@ -195,6 +195,87 @@ describe('runPlan', () => {
     expect(getState().panel.kind).toBe('result');
   });
 
+  it('collects the processed keys: A is processed when the key turns to B, the last one on the final event', async () => {
+    let emit: (p: Progress) => void = () => {};
+    const run = deferred<StartResult>();
+    useApi(
+      fakeApi({
+        onProgress: async (cb) => {
+          emit = cb;
+          return () => {};
+        },
+        start: () => run.promise,
+      }),
+    );
+    const done = runPlan(plan);
+    await tick();
+    expect(running().processed).toEqual([]);
+    emit({ kind: 'request', done: 0, total: 5, errors: 0, key: 'A' });
+    emit({ kind: 'request', done: 1, total: 5, errors: 0, key: 'A' });
+    expect(running().processed).toEqual([]);
+    const before = running().processed;
+    emit({ kind: 'waiting', seconds: 10 });
+    // Ничего не добавилось — тот же массив.
+    expect(running().processed).toBe(before);
+    emit({ kind: 'request', done: 2, total: 5, errors: 0, key: 'B' });
+    expect(running().processed).toEqual(['A']);
+    // Шаг B не прошёл — B всё равно обработан, когда очередь ушла дальше.
+    emit({ kind: 'request', done: 2, total: 5, errors: 1, key: 'C' });
+    expect(running().processed).toEqual(['A', 'B']);
+    emit({ kind: 'request', done: 4, total: 5, errors: 1, key: 'C' });
+    expect(running().processed).toEqual(['A', 'B']);
+    emit({ kind: 'request', done: 4, total: 5, errors: 1, key: '' });
+    expect(running()).toMatchObject({ key: '', processed: ['A', 'B', 'C'] });
+    run.resolve(finished());
+    await done;
+  });
+
+  it('does not list a key twice when it comes back', async () => {
+    let emit: (p: Progress) => void = () => {};
+    const run = deferred<StartResult>();
+    useApi(
+      fakeApi({
+        onProgress: async (cb) => {
+          emit = cb;
+          return () => {};
+        },
+        start: () => run.promise,
+      }),
+    );
+    const done = runPlan(plan);
+    await tick();
+    for (const key of ['A', 'B', 'A', 'B', '']) emit({ kind: 'request', done: 0, total: 4, errors: 0, key });
+    expect(running().processed).toEqual(['A', 'B']);
+    run.resolve(finished());
+    await done;
+  });
+
+  it('starts every run with no processed keys', async () => {
+    let emit: (p: Progress) => void = () => {};
+    let run = deferred<StartResult>();
+    useApi(
+      fakeApi({
+        onProgress: async (cb) => {
+          emit = cb;
+          return () => {};
+        },
+        start: () => run.promise,
+      }),
+    );
+    let done = runPlan(plan);
+    await tick();
+    emit({ kind: 'request', done: 0, total: 4, errors: 0, key: 'A' });
+    emit({ kind: 'request', done: 4, total: 4, errors: 0, key: '' });
+    run.resolve(finished());
+    await done;
+    run = deferred<StartResult>();
+    done = runPlan(plan);
+    await tick();
+    expect(running().processed).toEqual([]);
+    run.resolve(finished());
+    await done;
+  });
+
   describe('progress listener', () => {
     function listening(over: Partial<Api> = {}) {
       const unlisten = vi.fn();

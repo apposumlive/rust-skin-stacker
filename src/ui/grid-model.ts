@@ -54,3 +54,23 @@ export function gridKey(key: string, shift: boolean, repeat: boolean, cols: numb
 export function currentKey(panel: Panel): string {
   return panel.kind === 'running' ? panel.key : '';
 }
+
+const NONE: string[] = [];
+
+/** Ключи скинов, чьи шаги уже прошли. Вне запуска — один и тот же пустой массив. */
+export function processedKeys(panel: Panel): string[] {
+  return panel.kind === 'running' ? panel.processed : NONE;
+}
+
+/**
+ * Подпись под названием карточки: `total` — штуки (скина нет в плане), `becomes` — «станет …» (ещё не тронут),
+ * `now` — его обрабатывают сейчас (подсветка и «станет …»), `processed` — «обработано». «Обработано», а не «готово»:
+ * часть шагов могла не пройти. Текущий важнее обработанного — ключ может вернуться.
+ */
+export type CardNote = 'total' | 'becomes' | 'now' | 'processed';
+
+export function cardNote(key: string, planned: boolean, current: string, processed: ReadonlySet<string>): CardNote {
+  if (current !== '' && key === current) return 'now';
+  if (!planned) return 'total';
+  return processed.has(key) ? 'processed' : 'becomes';
+}

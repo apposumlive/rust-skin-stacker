@@ -34,12 +34,12 @@ describe('model', () => {
   });
 
   it('writes layouts in words', () => {
-    expect(layoutText([6], 2, true)).toBe('стопка ×6 и 2 по одному');
-    expect(layoutText([5, 4], 3, true)).toBe('стопки ×5, ×4 и 3 по одному');
-    expect(layoutText([], 12, false)).toBe('12 по одному');
+    expect(layoutText([6], 2, true)).toBe('стопка ×6 и 2\u00a0по одному');
+    expect(layoutText([5, 4], 3, true)).toBe('стопки ×5, ×4 и 3\u00a0по одному');
+    expect(layoutText([], 12, false)).toBe('12\u00a0по одному');
     expect(layoutText([10], 0, false)).toBe('×10');
     setLang('en');
-    expect(layoutText([6], 2, true)).toBe('stack ×6 and 2 singles');
+    expect(layoutText([6], 2, true)).toBe('stack ×6 and 2\u00a0singles');
   });
 
   it('makes at most three stack pills', () => {
@@ -48,7 +48,7 @@ describe('model', () => {
       { text: '×8', stack: true },
       { text: '×7', stack: true },
       { text: '+2', stack: true },
-      { text: '3 по одному', stack: false },
+      { text: '3\u00a0по одному', stack: false },
     ]);
   });
 
