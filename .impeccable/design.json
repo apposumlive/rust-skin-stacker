@@ -1,0 +1,683 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-27T00:00:00Z",
+  "title": "Design System: Rust Skin Stacker",
+  "extensions": {
+    "colorMeta": {
+      "ground": {
+        "role": "neutral",
+        "displayName": "Night Ground",
+        "canonical": "#0f1117",
+        "tonalRamp": [
+          "#090b11",
+          "#23252b",
+          "#3f4249",
+          "#5e6169",
+          "#7f828a",
+          "#a2a5ad",
+          "#c6c9d2",
+          "#ebeef7"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Slate Panel",
+        "canonical": "#161922",
+        "tonalRamp": [
+          "#080b13",
+          "#22252e",
+          "#3e424c",
+          "#5d616c",
+          "#7e828e",
+          "#a0a5b1",
+          "#c4c9d6",
+          "#eaeefb"
+        ]
+      },
+      "card": {
+        "role": "neutral",
+        "displayName": "Ink Card",
+        "canonical": "#1b1f2b",
+        "tonalRamp": [
+          "#070b15",
+          "#202531",
+          "#3d424f",
+          "#5c616f",
+          "#7d8291",
+          "#9fa5b5",
+          "#c3c9d9",
+          "#e8eeff"
+        ]
+      },
+      "card-hover": {
+        "role": "neutral",
+        "displayName": "Lifted Ink",
+        "canonical": "#1f2432",
+        "tonalRamp": [
+          "#070a17",
+          "#202533",
+          "#3c4251",
+          "#5b6171",
+          "#7c8293",
+          "#9ea5b7",
+          "#c2c9dc",
+          "#e8eeff"
+        ]
+      },
+      "card-raised": {
+        "role": "neutral",
+        "displayName": "Raised Slate",
+        "canonical": "#232838",
+        "tonalRamp": [
+          "#070a18",
+          "#1f2434",
+          "#3c4153",
+          "#5b6173",
+          "#7b8295",
+          "#9ea4b9",
+          "#c1c9de",
+          "#e8eeff"
+        ]
+      },
+      "image-well": {
+        "role": "neutral",
+        "displayName": "Dusk Well",
+        "canonical": "#20253a",
+        "tonalRamp": [
+          "#06091c",
+          "#1f2438",
+          "#3b4158",
+          "#5a6078",
+          "#7a819b",
+          "#9da4bf",
+          "#c0c8e4",
+          "#e9eeff"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline Slate",
+        "canonical": "#262b3a",
+        "tonalRamp": [
+          "#070a17",
+          "#202433",
+          "#3c4152",
+          "#5b6172",
+          "#7c8294",
+          "#9ea5b7",
+          "#c2c9dc",
+          "#e8eeff"
+        ]
+      },
+      "control-hover": {
+        "role": "neutral",
+        "displayName": "Pressed Slate",
+        "canonical": "#2b3144",
+        "tonalRamp": [
+          "#060a1a",
+          "#1f2436",
+          "#3b4155",
+          "#5a6176",
+          "#7a8298",
+          "#9da4bc",
+          "#c0c9e1",
+          "#e8eeff"
+        ]
+      },
+      "pill-selected": {
+        "role": "neutral",
+        "displayName": "Selected Pill",
+        "canonical": "#2c3246",
+        "tonalRamp": [
+          "#060a1a",
+          "#1e2437",
+          "#3b4156",
+          "#596077",
+          "#7a8299",
+          "#9ca4bd",
+          "#c0c8e2",
+          "#e8eeff"
+        ]
+      },
+      "box-border": {
+        "role": "neutral",
+        "displayName": "Checkbox Edge",
+        "canonical": "#3d4357",
+        "tonalRamp": [
+          "#060a1a",
+          "#1f2436",
+          "#3b4155",
+          "#5a6076",
+          "#7b8298",
+          "#9da4bc",
+          "#c1c8e1",
+          "#e9eeff"
+        ]
+      },
+      "scrim": {
+        "role": "neutral",
+        "displayName": "Scrim",
+        "canonical": "rgba(5, 6, 10, 0.55)",
+        "tonalRamp": [
+          "#090b10",
+          "#23252a",
+          "#404248",
+          "#5f6168",
+          "#808289",
+          "#a2a5ac",
+          "#c6c9d0",
+          "#eceef6"
+        ]
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Mist White",
+        "canonical": "#eceef5",
+        "tonalRamp": [
+          "#0a0b0f",
+          "#23252a",
+          "#404247",
+          "#5f6167",
+          "#808288",
+          "#a3a5ab",
+          "#c7c9d0",
+          "#eceef5"
+        ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Fog Grey",
+        "canonical": "#9aa0b4",
+        "tonalRamp": [
+          "#070a18",
+          "#202434",
+          "#3c4152",
+          "#5b6073",
+          "#7c8295",
+          "#9ea4b8",
+          "#c2c8dd",
+          "#e9eeff"
+        ]
+      },
+      "text-faint": {
+        "role": "neutral",
+        "displayName": "Dim Grey",
+        "canonical": "#6c7287",
+        "tonalRamp": [
+          "#070a19",
+          "#1f2435",
+          "#3c4154",
+          "#5b6075",
+          "#7b8197",
+          "#9ea4bb",
+          "#c1c8e0",
+          "#e9eeff"
+        ]
+      },
+      "on-accent": {
+        "role": "neutral",
+        "displayName": "Pure White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "indigo": {
+        "role": "primary",
+        "displayName": "Signal Indigo",
+        "canonical": "#5b5bf7",
+        "tonalRamp": [
+          "#070031",
+          "#1b0072",
+          "#320db5",
+          "#4941dd",
+          "#666bff",
+          "#8e9bff",
+          "#bac5ff",
+          "#eaeeff"
+        ]
+      },
+      "indigo-bright": {
+        "role": "primary",
+        "displayName": "Bright Indigo",
+        "canonical": "#7171ff",
+        "tonalRamp": [
+          "#080030",
+          "#1e0070",
+          "#361baa",
+          "#4f46d1",
+          "#6c6bf9",
+          "#929aff",
+          "#bdc4ff",
+          "#eaedff"
+        ]
+      },
+      "indigo-text": {
+        "role": "primary",
+        "displayName": "Text Indigo",
+        "canonical": "#8b8bff",
+        "tonalRamp": [
+          "#09002f",
+          "#21006e",
+          "#392a96",
+          "#554ebc",
+          "#7371e3",
+          "#9698ff",
+          "#bfc3ff",
+          "#ebedff"
+        ]
+      },
+      "indigo-wash": {
+        "role": "primary",
+        "displayName": "Indigo Wash",
+        "canonical": "rgba(91, 91, 247, 0.14)",
+        "tonalRamp": [
+          "#070031",
+          "#1b0072",
+          "#320db5",
+          "#4941dd",
+          "#666bff",
+          "#8e9bff",
+          "#bac5ff",
+          "#eaeeff"
+        ]
+      },
+      "ok-green": {
+        "role": "tertiary",
+        "displayName": "Verified Green",
+        "canonical": "#3ecf8e",
+        "tonalRamp": [
+          "#000f06",
+          "#002e1a",
+          "#004f31",
+          "#007449",
+          "#009b64",
+          "#2ac282",
+          "#5ce7a5",
+          "#c3ffdc"
+        ]
+      },
+      "warn-amber": {
+        "role": "tertiary",
+        "displayName": "Hold Amber",
+        "canonical": "#f2b84b",
+        "tonalRamp": [
+          "#120900",
+          "#332100",
+          "#583c00",
+          "#7f5900",
+          "#a97800",
+          "#d29a23",
+          "#f8be52",
+          "#ffeccd"
+        ]
+      },
+      "bad-red": {
+        "role": "tertiary",
+        "displayName": "Fault Red",
+        "canonical": "#f0625f",
+        "tonalRamp": [
+          "#1f0001",
+          "#4d0007",
+          "#800013",
+          "#af222a",
+          "#d84b4b",
+          "#ff726e",
+          "#ffb2ac",
+          "#ffe8e6"
+        ]
+      },
+      "bad-wash": {
+        "role": "tertiary",
+        "displayName": "Fault Wash",
+        "canonical": "rgba(240, 98, 95, 0.12)",
+        "tonalRamp": [
+          "#1f0001",
+          "#4d0007",
+          "#800013",
+          "#af222a",
+          "#d84b4b",
+          "#ff726e",
+          "#ffb2ac",
+          "#ffe8e6"
+        ]
+      },
+      "danger-text": {
+        "role": "tertiary",
+        "displayName": "Soft Fault Red",
+        "canonical": "#ff8f8c",
+        "tonalRamp": [
+          "#1f0002",
+          "#4d000a",
+          "#7a141e",
+          "#a03a3c",
+          "#c75d5c",
+          "#ee807d",
+          "#ffb2ae",
+          "#ffe8e7"
+        ]
+      },
+      "alert-text": {
+        "role": "tertiary",
+        "displayName": "Pale Fault Red",
+        "canonical": "#ffb4b2",
+        "tonalRamp": [
+          "#1f0002",
+          "#470c11",
+          "#692c2d",
+          "#8c4b4b",
+          "#b16c6c",
+          "#d78f8d",
+          "#feb3b1",
+          "#ffe8e7"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Sign-in title only."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Side-panel headings, skin name, drawer title and key plan figures."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "The Inventory heading above the grid."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base text: filter options, menu items, selects and the search input."
+      },
+      "body-strong": {
+        "displayName": "Body Strong",
+        "purpose": "Bulk toggles, verdict lines and links."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "Every button label."
+      },
+      "body-sm": {
+        "displayName": "Body Small",
+        "purpose": "Card names, key-value rows, queue rows, account line, preview and status lines."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Card sub-line, notes, footers, option counts, inventory totals and disclaimers."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase column headings and field labels."
+      },
+      "micro": {
+        "displayName": "Micro",
+        "purpose": "Layout pills on cards and slider ticks."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "The token paste field only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "menu-float",
+        "value": "0 12px 32px rgba(0, 0, 0, 0.45)",
+        "purpose": "The top-bar dropdown menu, with a 1px hairline border."
+      },
+      {
+        "name": "drawer-edge",
+        "value": "-16px 0 40px rgba(0, 0, 0, 0.35)",
+        "purpose": "The settings drawer over a scrim of rgba(5, 6, 10, 0.55)."
+      },
+      {
+        "name": "slider-thumb",
+        "value": "0 1px 4px rgba(0, 0, 0, 0.4)",
+        "purpose": "The white 18px slider thumb."
+      },
+      {
+        "name": "ring-active",
+        "value": "inset 0 0 0 1.5px #5b5bf7",
+        "purpose": "State ring, not depth: active bulk toggle and focus-within search."
+      },
+      {
+        "name": "ring-processing",
+        "value": "inset 0 0 0 1px #7171ff",
+        "purpose": "State ring on the card being processed, added to its 1.5px bright indigo border."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.2, 0.7, 0.2, 1)",
+        "purpose": "The only easing curve (--ease), used by every transition and keyframe."
+      },
+      {
+        "name": "duration-fast",
+        "value": "150ms",
+        "purpose": "Hover and state transitions on buttons, cards and checkboxes; menu rise; scrim fade."
+      },
+      {
+        "name": "duration-base",
+        "value": "200ms",
+        "purpose": "Panel view enter, banner rise, drawer slide-in and the card dim fade."
+      },
+      {
+        "name": "duration-slow",
+        "value": "250ms",
+        "purpose": "Sign-in card rise."
+      },
+      {
+        "name": "rise",
+        "value": "from { opacity: 0; transform: translateY(4px); }",
+        "purpose": "Keyframes for menu, banner, panel view and sign-in card entrance."
+      },
+      {
+        "name": "slide-in",
+        "value": "from { transform: translateX(24px); opacity: 0; }",
+        "purpose": "Keyframes for the settings drawer."
+      },
+      {
+        "name": "shimmer",
+        "value": "1.4s linear infinite",
+        "purpose": "Skeleton card sweep while the inventory loads; the one motion outside 150 to 250 ms."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "@media (prefers-reduced-motion: reduce) { animation: none; transition: none }",
+        "purpose": "All animation and transition are switched off."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow-window",
+        "value": "1099px"
+      },
+      {
+        "name": "low-window",
+        "value": "700px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single filled action of a view (Run, Split off, Save, Continue); indigo, white label, brightens on hover.",
+      "html": "<button class=\"ds-btn-primary\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M7 4v16l13 -8l-13 -8\"/></svg><span>Run</span></button>",
+      "css": ".ds-btn-primary{height:44px;padding:0 16px;border:0;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px; background:var(--acc, #5b5bf7);color:#fff;font:800 14px/1.45 'Manrope', system-ui, sans-serif;cursor:pointer;transition:background-color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1))} .ds-btn-primary svg{flex:none} .ds-btn-primary:hover:not(:disabled){background:var(--acc-2, #7171ff)} .ds-btn-primary:focus-visible{outline:2px solid var(--acc-2, #7171ff);outline-offset:2px} .ds-btn-primary:disabled{opacity:.45;cursor:default}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Quiet companion action next to the primary one (Combine, Cancel, Close); raised slate, lightens on hover.",
+      "html": "<button class=\"ds-btn-secondary\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 10l-2 1l8 4l8 -4l-2 -1\"/><path d=\"M4 15l8 4l8 -4\"/><path d=\"M12 4v7\"/><path d=\"M15 8l-3 3l-3 -3\"/></svg><span>Combine</span></button>",
+      "css": ".ds-btn-secondary{height:44px;padding:0 16px;border:0;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px; background:var(--card-2, #232838);color:var(--text, #eceef5);font:800 14px/1.45 'Manrope', system-ui, sans-serif;cursor:pointer;transition:background-color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1))} .ds-btn-secondary svg{flex:none} .ds-btn-secondary:hover:not(:disabled){background:#2b3144} .ds-btn-secondary:focus-visible{outline:2px solid var(--acc-2, #7171ff);outline-offset:2px} .ds-btn-secondary:disabled{opacity:.45;cursor:default}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Stop, shown only while a run is in progress; a fault-red wash with a softened red label, no hover change.",
+      "html": "<button class=\"ds-btn-danger\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 7a2 2 0 0 1 2 -2h10a2 2 0 0 1 2 2v10a2 2 0 0 1 -2 2h-10a2 2 0 0 1 -2 -2l0 -10\"/></svg><span>Stop</span></button>",
+      "css": ".ds-btn-danger{height:44px;padding:0 16px;border:0;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;gap:8px; background:var(--bad-bg, rgba(240, 98, 95, 0.12));color:#ff8f8c;font:800 14px/1.45 'Manrope', system-ui, sans-serif;cursor:pointer} .ds-btn-danger svg{flex:none} .ds-btn-danger:focus-visible{outline:2px solid var(--acc-2, #7171ff);outline-offset:2px} .ds-btn-danger:disabled{opacity:.45;cursor:default}"
+    },
+    {
+      "name": "Bulk Toggle",
+      "kind": "button",
+      "refersTo": "button-bulk",
+      "description": "Top-bar operation buttons (Split all, Combine all); the one whose plan is open turns indigo-washed with an inset ring.",
+      "html": "<div class=\"ds-bulks\"><button class=\"ds-bulk\" type=\"button\" aria-pressed=\"false\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M21 17h-5.397a5 5 0 0 1 -4.096 -2.133l-.514 -.734a5 5 0 0 0 -4.096 -2.133h-3.897\"/><path d=\"M21 7h-5.395a5 5 0 0 0 -4.098 2.135l-.51 .73a5 5 0 0 1 -4.097 2.135h-3.9\"/><path d=\"M18 10l3 -3l-3 -3\"/><path d=\"M18 20l3 -3l-3 -3\"/></svg><span>Split all</span></button><button class=\"ds-bulk ds-active\" type=\"button\" aria-pressed=\"true\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M6 10l-2 1l8 4l8 -4l-2 -1\"/><path d=\"M4 15l8 4l8 -4\"/><path d=\"M12 4v7\"/><path d=\"M15 8l-3 3l-3 -3\"/></svg><span>Combine all</span></button></div>",
+      "css": ".ds-bulks{display:flex;gap:10px} .ds-bulk{height:38px;padding:0 16px;border:0;border-radius:9px;display:flex;align-items:center;gap:8px;background:var(--card-2, #232838);color:var(--text, #eceef5); font:700 14px/1.45 'Manrope', system-ui, sans-serif;cursor:pointer;transition:background-color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1)),box-shadow .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1)),color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1))} .ds-bulk:hover:not(:disabled){background:#2b3144} .ds-bulk.ds-active{background:var(--acc-bg, rgba(91, 91, 247, 0.14));color:var(--acc-text, #8b8bff);box-shadow:inset 0 0 0 1.5px var(--acc, #5b5bf7)} .ds-bulk:focus-visible{outline:2px solid var(--acc-2, #7171ff);outline-offset:2px} .ds-bulk:disabled{opacity:.45;cursor:default}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "input-search",
+      "description": "Filter-column search: ink card fill, magnifier, 1.5px inset indigo ring while focused.",
+      "html": "<label class=\"ds-search\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0\"/><path d=\"M21 21l-6 -6\"/></svg><input class=\"ds-search-input\" type=\"search\" placeholder=\"Search\" aria-label=\"Search\" autocomplete=\"off\"></label>",
+      "css": ".ds-search{width:176px;height:38px;border-radius:9px;background:var(--card, #1b1f2b);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text-2, #9aa0b4);cursor:text; font:500 14px/1.45 'Manrope', system-ui, sans-serif;transition:box-shadow .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1))} .ds-search:focus-within{box-shadow:inset 0 0 0 1.5px var(--acc, #5b5bf7)} .ds-search svg{flex:none} .ds-search-input{flex:1;min-width:0;border:0;outline:none;background:none;font:inherit;color:var(--text, #eceef5)} .ds-search-input::placeholder{color:var(--text-2, #9aa0b4)}"
+    },
+    {
+      "name": "Filter Option",
+      "kind": "custom",
+      "refersTo": "filter-box-on",
+      "description": "Filter rows under an uppercase label: round box for single choice, rounded-square for multiple; checked is solid indigo with a white check; the count is tabular and right aligned.",
+      "html": "<div class=\"ds-filter\"><div class=\"ds-fh\">Show</div><button class=\"ds-opt\" type=\"button\" role=\"radio\" aria-checked=\"false\"><span class=\"ds-box ds-round\"><svg viewBox=\"0 0 24 24\" width=\"13\" height=\"13\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12l5 5l10 -10\"/></svg></span>All<span class=\"ds-count\">40</span></button><button class=\"ds-opt ds-on\" type=\"button\" role=\"radio\" aria-checked=\"true\"><span class=\"ds-box ds-round\"><svg viewBox=\"0 0 24 24\" width=\"13\" height=\"13\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12l5 5l10 -10\"/></svg></span>Stacks<span class=\"ds-count\">16</span></button><div class=\"ds-fh ds-fh-gap\">Type</div><button class=\"ds-opt\" type=\"button\" role=\"checkbox\" aria-checked=\"false\"><span class=\"ds-box\"><svg viewBox=\"0 0 24 24\" width=\"13\" height=\"13\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12l5 5l10 -10\"/></svg></span>Weapon</button></div>",
+      "css": ".ds-filter{width:176px;font:500 14px/1.45 'Manrope', system-ui, sans-serif;color:var(--text, #eceef5)} .ds-fh{font-size:11px;font-weight:800;color:var(--text-2, #9aa0b4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px} .ds-fh-gap{margin-top:18px} .ds-opt{width:100%;display:flex;align-items:center;gap:10px;padding:6px 0;border:0;border-radius:6px;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer} .ds-opt:focus-visible{outline:2px solid var(--acc-2, #7171ff);outline-offset:2px} .ds-box{width:18px;height:18px;flex:none;border-radius:5px;border:1.5px solid #3d4357;display:grid;place-items:center; transition:background-color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1)),border-color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1))} .ds-box.ds-round{border-radius:50%} .ds-box svg{opacity:0;color:#fff} .ds-opt:hover .ds-box{border-color:var(--text-3, #6c7287)} .ds-opt.ds-on .ds-box{background:var(--acc, #5b5bf7);border-color:var(--acc, #5b5bf7)} .ds-opt.ds-on .ds-box svg{opacity:1} .ds-count{margin-left:auto;color:var(--text-2, #9aa0b4);font-size:12px;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Skin Card",
+      "kind": "card",
+      "refersTo": "skin-card",
+      "description": "The signature tile of the grid: name, count line, picture well and layout pills. Shown default, selected and previewing a plan (becomes ...).",
+      "html": "<div class=\"ds-cards\"><div class=\"ds-card\" tabindex=\"0\"><div class=\"ds-nm\">Sample rifle</div><div class=\"ds-sub\">12 pcs</div><div class=\"ds-imgbox\"><svg viewBox=\"0 0 24 24\" width=\"28\" height=\"28\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 8h.01\"/><path d=\"M7 3h11a3 3 0 0 1 3 3v11m-.856 3.099a2.991 2.991 0 0 1 -2.144 .901h-12a3 3 0 0 1 -3 -3v-12c0 -.845 .349 -1.608 .91 -2.153\"/><path d=\"M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5\"/><path d=\"M16.33 12.338c.574 -.054 1.155 .166 1.67 .662l3 3\"/><path d=\"M3 3l18 18\"/></svg></div><div class=\"ds-layout\"><span class=\"ds-pill ds-st\">×5</span><span class=\"ds-pill ds-st\">×4</span><span class=\"ds-pill\">3 singles</span></div></div><div class=\"ds-card ds-sel\" tabindex=\"0\"><div class=\"ds-nm\">Sample jacket</div><div class=\"ds-sub\">8 pcs</div><div class=\"ds-imgbox\"><svg viewBox=\"0 0 24 24\" width=\"28\" height=\"28\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 8h.01\"/><path d=\"M7 3h11a3 3 0 0 1 3 3v11m-.856 3.099a2.991 2.991 0 0 1 -2.144 .901h-12a3 3 0 0 1 -3 -3v-12c0 -.845 .349 -1.608 .91 -2.153\"/><path d=\"M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5\"/><path d=\"M16.33 12.338c.574 -.054 1.155 .166 1.67 .662l3 3\"/><path d=\"M3 3l18 18\"/></svg></div><div class=\"ds-layout\"><span class=\"ds-pill ds-st\">×8</span></div></div><div class=\"ds-card\" tabindex=\"0\"><div class=\"ds-nm\">Sample crate</div><div class=\"ds-sub\"><span class=\"ds-becomes\">becomes 12 singles</span></div><div class=\"ds-imgbox\"><svg viewBox=\"0 0 24 24\" width=\"28\" height=\"28\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M15 8h.01\"/><path d=\"M7 3h11a3 3 0 0 1 3 3v11m-.856 3.099a2.991 2.991 0 0 1 -2.144 .901h-12a3 3 0 0 1 -3 -3v-12c0 -.845 .349 -1.608 .91 -2.153\"/><path d=\"M3 16l5 -5c.928 -.893 2.072 -.893 3 0l5 5\"/><path d=\"M16.33 12.338c.574 -.054 1.155 .166 1.67 .662l3 3\"/><path d=\"M3 3l18 18\"/></svg></div><div class=\"ds-layout\"><span class=\"ds-pill ds-st\">×12</span></div></div></div>",
+      "css": ".ds-cards{display:flex;gap:12px;font:500 14px/1.45 'Manrope', system-ui, sans-serif} .ds-card{position:relative;width:164px;height:192px;background:var(--card, #1b1f2b);border-radius:12px;padding:10px 10px 12px;border:1.5px solid transparent;cursor:pointer;user-select:none; color:var(--text, #eceef5);transition:border-color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1)),background-color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1))} .ds-card:hover{background:var(--card-hover, #1f2432)} .ds-card.ds-sel{border-color:var(--acc, #5b5bf7);background:var(--card-2, #232838)} .ds-card:focus-visible{outline:2px solid var(--acc-2, #7171ff);outline-offset:-3px} .ds-nm{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .ds-sub{font-size:12px;color:var(--text-2, #9aa0b4);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums} .ds-becomes{color:var(--acc-text, #8b8bff);font-weight:700} .ds-imgbox{height:96px;margin-top:8px;border-radius:8px;background:var(--img, #20253a);display:grid;place-items:center;color:var(--text-3, #6c7287)} .ds-layout{display:flex;gap:4px;margin-top:8px;height:20px;overflow:hidden} .ds-pill{height:20px;padding:0 7px;border-radius:5px;background:var(--card-2, #232838);font-size:11px;font-weight:700;color:var(--text-2, #9aa0b4);display:flex;align-items:center;white-space:nowrap;font-variant-numeric:tabular-nums} .ds-pill.ds-st{color:var(--text, #eceef5)} .ds-card.ds-sel .ds-pill{background:#2c3246}"
+    },
+    {
+      "name": "Split-Off Section",
+      "kind": "custom",
+      "refersTo": "section-block",
+      "description": "Item panel block for separating N pieces: count stepper, indigo-filled slider, ticks and a computed preview line.",
+      "html": "<section class=\"ds-sec\"><div class=\"ds-sec-h\"><span>Split off one by one</span><span class=\"ds-amt\"><button class=\"ds-amt-b\" type=\"button\" aria-label=\"Fewer\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12l14 0\"/></svg></button><input class=\"ds-amt-v\" type=\"number\" value=\"2\" min=\"1\" max=\"7\" aria-label=\"Count\"><button class=\"ds-amt-b\" type=\"button\" aria-label=\"More\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M12 5l0 14\"/><path d=\"M5 12l14 0\"/></svg></button></span></div><input class=\"ds-range\" type=\"range\" min=\"1\" max=\"7\" value=\"2\" aria-label=\"Count\"><div class=\"ds-ticks\"><span>1</span><span>7</span></div><p class=\"ds-preview\">Becomes: <b>stack ×6 and 2 singles</b> · 2 requests, ~3 s</p></section>",
+      "css": ".ds-sec{width:300px;background:var(--card, #1b1f2b);border-radius:12px;padding:14px;color:var(--text, #eceef5);font:500 14px/1.45 'Manrope', system-ui, sans-serif} .ds-sec-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:13px;font-weight:800} .ds-amt{display:flex;align-items:center;gap:6px} .ds-amt-b{width:30px;height:30px;border:0;border-radius:8px;background:var(--card-2, #232838);color:var(--text, #eceef5);display:grid;place-items:center;cursor:pointer;transition:background-color .15s var(--ease, cubic-bezier(0.2, 0.7, 0.2, 1))} .ds-amt-b:hover:not(:disabled){background:#2b3144} .ds-amt-b:focus-visible{outline:2px solid var(--acc-2, #7171ff);outline-offset:2px} .ds-amt-v{width:52px;height:30px;border:0;border-radius:8px;background:var(--bg, #0f1117);color:var(--text, #eceef5);text-align:center;font:800 15px 'Manrope', system-ui, sans-serif;font-variant-numeric:tabular-nums;-moz-appearance:textfield;appearance:textfield} .ds-amt-v::-webkit-inner-spin-button,.ds-amt-v::-webkit-outer-spin-button{-webkit-appearance:none;margin:0} .ds-range{-webkit-appearance:none;appearance:none;display:block;width:100%;height:6px;margin:18px 0 6px;border-radius:3px;cursor:pointer; background:linear-gradient(to right,var(--acc, #5b5bf7) 17%,var(--card-2, #232838) 17%)} .ds-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)} .ds-range::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.4)} .ds-range:focus-visible{outline:2px solid var(--acc-2, #7171ff);outline-offset:6px} .ds-ticks{display:flex;justify-content:space-between;font-size:11px;color:var(--text-2, #9aa0b4);font-variant-numeric:tabular-nums} .ds-preview{margin:12px 0 0;font-size:13px;color:var(--text-2, #9aa0b4);font-variant-numeric:tabular-nums} .ds-preview b{color:var(--text, #eceef5);font-weight:700}"
+    },
+    {
+      "name": "Plan Facts",
+      "kind": "custom",
+      "description": "The numbers of a plan or result: muted label left, 20px heavy tabular figure right, a hairline under each row.",
+      "html": "<dl class=\"ds-facts\"><div class=\"ds-fact\"><dt>Stacks affected</dt><dd>17</dd></div><div class=\"ds-fact\"><dt>Requests to Steam</dt><dd>72</dd></div><div class=\"ds-fact\"><dt>Takes</dt><dd>~3 min</dd></div></dl>",
+      "css": ".ds-facts{width:300px;margin:0;display:grid;gap:10px;color:var(--text, #eceef5);font:500 14px/1.45 'Manrope', system-ui, sans-serif} .ds-fact{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:10px;border-bottom:1px solid var(--line, #262b3a);font-size:13px;color:var(--text-2, #9aa0b4)} .ds-fact dt{margin:0} .ds-fact dd{margin:0;font-size:20px;font-weight:800;color:var(--text, #eceef5);text-align:right;font-variant-numeric:tabular-nums}"
+    },
+    {
+      "name": "Run Progress",
+      "kind": "custom",
+      "refersTo": "progress-fill",
+      "description": "The running view: an 8px indigo bar, a counted progress line, muted current item and time left, and an amber wait line when Steam asks to pause.",
+      "html": "<div class=\"ds-run\"><div class=\"ds-progress\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"72\" aria-valuenow=\"30\" aria-label=\"Running: Split all\"><div class=\"ds-fill\"></div></div><p class=\"ds-ptext\">Done 30 of 72, errors 0</p><p class=\"ds-muted\">Now: Sample rifle</p><p class=\"ds-muted\">~2 min left</p><p class=\"ds-wait\">Steam asked to wait: 12 s</p></div>",
+      "css": ".ds-run{width:300px;color:var(--text, #eceef5);font:500 14px/1.45 'Manrope', system-ui, sans-serif} .ds-progress{height:8px;border-radius:4px;background:var(--card-2, #232838);overflow:hidden;margin:16px 0 10px} .ds-fill{width:42%;height:100%;border-radius:4px;background:var(--acc, #5b5bf7)} .ds-run p{margin:4px 0 0;font-size:13px;font-variant-numeric:tabular-nums} .ds-run .ds-muted{color:var(--text-2, #9aa0b4)} .ds-run .ds-wait{color:var(--warn, #f2b84b);font-weight:700}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Honest Stockroom",
+    "overview": "The window is a calm stockroom where every item is counted and nothing is hidden: you see what is on the shelves, what a job will move, and afterwards a tally that proves nothing went missing. Honesty is the style. Plain surfaces, exact numbers and statements that are true even when a step fails (a processed card says \"processed\", not \"done\").\n\nA dark, fixed-palette desktop window built for one operation: split or combine stacks of Rust skins, and show that nothing was lost. The work is laid out in plain view. A card grid sits in the middle, filters on the left, a details panel on the right. Before anything runs, the screen says what will change; afterwards it says whether the counts match. It is a tool (Operate mode), not a storefront: dense but not cramped, keyboard reachable, readable for the few minutes a run takes.\n\nSurfaces are flat and stacked by tone, not by shadow. Type is Manrope in heavy weights on near-black blue-greys. One indigo accent marks the primary action, the current selection and the run in progress. Status colour is rare and carries meaning: green is verified, amber is waiting, red is a fault. Motion is short and quiet, and it switches off entirely under reduced-motion.\n\nThe product has to feel at home for Rust players without borrowing case-site spectacle. The confirmed rejections are neon, gloss, glow, gradient text and anything that reads as a casino. Steam supplies only names and item pictures; they are shown as plain text and as images inside quiet wells, never as markup.",
+    "keyCharacteristics": [
+      "Single fixed dark palette (`color-scheme: dark`); no light theme.",
+      "One accent, indigo (#5b5bf7), plus three status colours used sparingly.",
+      "Flat tonal layering with 1px hairlines; shadows only on things that float.",
+      "Manrope 500 to 800, tabular numerals for every count, self-hosted with Tabler outline icons.",
+      "Three-column frame under a 60px top bar; the whole window never scrolls, its columns do.",
+      "Preview in place: cards show \"becomes ...\" and dim when a plan is open; a reconciliation verdict closes the run.",
+      "Motion 150 to 250 ms on one easing curve, disabled under `prefers-reduced-motion`."
+    ],
+    "rules": [
+      {
+        "name": "The One Indigo Rule",
+        "body": "Indigo is the only accent. It marks the primary action, the current selection and focus, the run in progress and what will change (\"becomes\"). Its only decorative uses are the logo tile and the small hint and step badges.",
+        "section": "colors"
+      },
+      {
+        "name": "The Verified-Green Rule",
+        "body": "Green means a fact was confirmed (a matching count, a \"yes\", a live token), never merely that steps ran. A processed card is written in neutral grey because some of its steps may have failed.",
+        "section": "colors"
+      },
+      {
+        "name": "The Readable-Small-Text Rule",
+        "body": "Small readable text is Fog Grey (#9aa0b4) or lighter, and small accent text is Text Indigo (#8b8bff); both keep at least 4.5:1 on the surfaces they sit on, which a test enforces. Dim Grey (#6c7287) is for pictograms and decoration.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Numbers Rule",
+        "body": "Every count, quantity, duration, token lifetime, slider tick and progress figure uses tabular numerals (`font-variant-numeric: tabular-nums`, the `.num` class; cards and pills set it directly) so columns of figures hold their width as they change.",
+        "section": "typography"
+      },
+      {
+        "name": "The Self-Hosted Type Rule",
+        "body": "Manrope and Tabler icons come from npm and ship inside the build. Never load a font or icon set from a CDN.",
+        "section": "typography"
+      },
+      {
+        "name": "The Three-Column Frame Rule",
+        "body": "Every screen in the main window is a filter, grid and panel combination under the top bar. New views are new panel contents or a drawer over the frame, not new page layouts.",
+        "section": "layout"
+      },
+      {
+        "name": "The Docked Actions Rule",
+        "body": "In the side panel, content scrolls and the buttons stay docked at the bottom, visible at any window height. The main action is the first or topmost of the dock, full width in single-column docks.",
+        "section": "layout"
+      },
+      {
+        "name": "The Flat-Until-Floating Rule",
+        "body": "In-flow surfaces separate by tone and hairline only. An outer shadow is allowed on a surface only when it overlays the window (menu, drawer) and on the slider thumb.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Ring-Not-Glow Rule",
+        "body": "Selection and focus are crisp solid rings of indigo. No blurred glow, no coloured shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Preview-In-Place Rule",
+        "body": "What an operation will do is shown on the grid before it runs: affected cards say \"becomes ...\", the rest dim to 35%, and the result closes with a reconciliation verdict in the panel.",
+        "section": "components"
+      },
+      {
+        "name": "The Text-Only Steam Data Rule",
+        "body": "Names and labels that come from Steam are plain text, truncated with an ellipsis and repeated in `title`, never markup. The only Steam visual is the item picture, held in an image well.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "**Do** keep indigo (#5b5bf7) for the primary action, selection, progress and \"becomes\" text; one filled primary button per view.",
+      "**Do** build depth from tone: ground #0f1117, panel #161922, card #1b1f2b, raised #232838, with 1px #262b3a hairlines.",
+      "**Do** set every count, duration and amount in tabular numerals.",
+      "**Do** keep small readable text at Fog Grey (#9aa0b4) or lighter, and accent text at #8b8bff.",
+      "**Do** keep motion between 150 and 250 ms on `cubic-bezier(0.2, 0.7, 0.2, 1)`, and make it vanish under `prefers-reduced-motion`.",
+      "**Do** dock panel actions at the bottom and let the panel content scroll above them.",
+      "**Do** show state with solid rings: 1.5px indigo for selection, 2px bright indigo outline (offset 2px) for focus.",
+      "**Do** draw Steam pictures contained inside a Dusk Well (#20253a) and fall back to the outline photo-off icon.",
+      "**Do** keep the window usable at 1280 x 800 and at its 1024 x 640 minimum, with three card columns at the minimum."
+    ],
+    "donts": [
+      "**Don't** introduce a second accent hue or spend indigo on decoration beyond the logo tile and small badges.",
+      "**Don't** write a finished or processed state in green; green is for verified facts.",
+      "**Don't** use neon, glow, gloss, gradient text or case-site and casino styling; the only gradients are the skeleton shimmer and the slider fill.",
+      "**Don't** put shadows on cards, sections or panels; shadows belong to the menu, the drawer and the slider thumb.",
+      "**Don't** use Dim Grey (#6c7287) for text people must read.",
+      "**Don't** add a light theme or a theme switch; the palette is fixed.",
+      "**Don't** put `style` attributes in markup or build DOM from HTML strings (no `innerHTML`); the production CSP allows only the bundled stylesheet.",
+      "**Don't** load fonts, icons or images from a CDN other than the Steam item-image host.",
+      "**Don't** put \"Steam\" in the product name, imitate Valve or Facepunch branding, or drop the non-affiliation line from the sign-in and settings screens.",
+      "**Don't** let the page itself scroll or let the panel buttons scroll out of view."
+    ]
+  }
+}
