@@ -85,7 +85,7 @@ describe('empty grid', () => {
     expect(emptyStateOf(dropsOnly('A'), filter({ search: 'x' }))).toEqual(nothing);
     expect(emptyStateOf(dropsOnly('A'), filter({ categories: ['Tool'] }))).toEqual(nothing);
     expect(emptyStateOf(dropsOnly('A'), filter({ show: 'dupes' }))).toEqual(nothing);
-    // С переключателем «Непередаваемые» скрывать нечего: новый случай не нужен.
+    // С флажком «Нельзя передать» скрывать нечего: новый случай не нужен.
     expect(emptyStateOf(dropsOnly('A'), filter({ untradable: true }))).toEqual(nothing);
     // Не всё скрыто как дроп, и поиск не находит и дроп — это уже общий случай.
     expect(emptyStateOf({ skins: [drop('A'), skin('B')], unreadable: [] }, filter({ search: 'x' }))).toEqual(nothing);
@@ -175,7 +175,7 @@ describe('error banner', () => {
 describe('untradable switch texts', () => {
   it('names the checkbox, its hint and the line of the totals', () => {
     setLang('ru');
-    expect(t('filters.untradable')).toBe('Непередаваемые');
+    expect(t('filters.untradable')).toBe('Нельзя передать');
     expect(t('filters.untradableHint')).toBe('Дропы Twitch и другие предметы, которые нельзя передать. Делить и собирать в них нечего.');
     expect(t('stats.untradable')).toBe('Нельзя передать');
     setLang('en');
