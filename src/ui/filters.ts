@@ -61,7 +61,7 @@ export function createFilters(el: HTMLElement): Part {
       onclick: () => setFilter({ untradable: !getState().filter.untradable }),
     },
     h('span', { class: 'box' }, icon('check')),
-    t('filters.untradable'),
+    h('span', { class: 'lbl' }, t('filters.untradable')),
     untradableCount,
   );
   const types = h('div', { role: 'group', 'aria-label': t('filters.type') });
@@ -124,7 +124,7 @@ export function createFilters(el: HTMLElement): Part {
       lastUntradable = s.filter.untradable;
       if (document.activeElement !== search && search.value !== s.filter.search) search.value = s.filter.search;
 
-      // Числа зависят от инвентаря и переключателя «Непередаваемые» (он меняет «Все»); категории и итоги — только от
+      // Числа зависят от инвентаря и флажка «Нельзя передать» (он меняет «Все»); категории и итоги — только от
       // инвентаря. Остальные части фильтра меняют лишь отметки.
       const inv = s.inventory;
       if (inventoryChanged || untradableChanged) {

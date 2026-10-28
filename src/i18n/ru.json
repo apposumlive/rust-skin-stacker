@@ -56,7 +56,7 @@
   "filters.stacks": "Стопки",
   "filters.dupes": "Можно собрать",
   "filters.dupesHint": "Предметы, чьи записи можно собрать в стопки",
-  "filters.untradable": "Непередаваемые",
+  "filters.untradable": "Нельзя передать",
   "filters.untradableHint": "Дропы Twitch и другие предметы, которые нельзя передать. Делить и собирать в них нечего.",
   "filters.type": "Тип",
   "filters.noTypes": "Типов нет",

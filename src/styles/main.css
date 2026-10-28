@@ -39,12 +39,13 @@
 .search-input { flex: 1; min-width: 0; border: 0; outline: none; background: none; font-size: 14px; color: var(--text); }
 .search-input::placeholder { color: var(--text-2); }
 .fh { font-size: 12px; font-weight: 800; color: var(--text-2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
-.opt { width: 100%; display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 6px 0; text-align: left; border-radius: 6px; }
+/* Флажок и число стоят по первой строке подписи: если подпись не помещается и переносится по словам
+   («Можно собрать», «Нельзя передать» с трёхзначным числом), числа всё равно остаются одним ровным столбцом. */
+.opt { width: 100%; display: flex; align-items: flex-start; gap: 10px; font-size: 14px; padding: 6px 0; text-align: left; border-radius: 6px; }
 .opt:hover .box { border-color: var(--text-3); }
-.opt .c { margin-left: auto; color: var(--text-2); font-size: 13px; }
-/* Длинная подпись «Непередаваемые» не помещается в колонку вместе с числом: шрифт мельче, число уходит строкой ниже.
-   В узкой колонке подпись остаётся рядом с флажком за счёт боковых отступов 12px (@media ниже). */
-.opt.long { font-size: 13px; flex-wrap: wrap; row-gap: 0; }
+.opt .box { margin-top: 1px; }
+.opt .c { margin-left: auto; margin-top: 1px; color: var(--text-2); font-size: 13px; }
+.opt.long .lbl { flex: 1; min-width: 0; }
 .box {
   width: 18px; height: 18px; flex: none; border-radius: 5px; border: 1.5px solid #3d4357; display: grid; place-items: center;
   font-size: 13px; transition: background-color 0.15s var(--ease), border-color 0.15s var(--ease);

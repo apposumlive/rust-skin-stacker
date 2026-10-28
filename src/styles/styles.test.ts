@@ -106,26 +106,16 @@ describe('layout', () => {
     expect(prop(rule(panelCss, '.queue'), 'overflow-y')).toBe('auto');
   });
 
-  it('keeps the long «Непередаваемые» label next to its box in the narrow filter column, the count may wrap below', () => {
-    // Ширина слова «Непередаваемые» в Manrope 500, в em (замер в Chrome: 110,4 px при 13 px).
-    const LABEL_EM = 8.5;
-    const narrow = media(mainCss, '(max-width: 1099px)');
-    const own = (selector: string, name: string) => {
-      try {
-        return prop(rule(narrow, selector), name);
-      } catch {
-        return prop(rule(mainCss, selector), name);
-      }
-    };
-    const column = Number(prop(rule(narrow, '.wrap'), 'grid-template-columns').match(/^(\d+)px/)![1]);
-    const border = parseFloat(prop(rule(mainCss, '.filters'), 'border-right'));
-    const sides = own('.filters', 'padding').split(/\s+/).map(parseFloat);
-    const inner = column - border - 2 * (sides[1] ?? sides[0]);
-    const long = rule(mainCss, '.opt.long');
-    const gap = parseFloat(/(?:^|[;\s])gap\s*:/.test(long) ? prop(long, 'gap') : prop(rule(mainCss, '.opt'), 'gap'));
-    const line = parseFloat(prop(rule(mainCss, '.box'), 'width')) + gap + parseFloat(prop(long, 'font-size')) * LABEL_EM;
-    expect(line).toBeLessThanOrEqual(inner);
-    expect(prop(long, 'flex-wrap')).toBe('wrap');
+  it('keeps the counts of the filter options in one column when a label wraps', () => {
+    const opt = rule(mainCss, '.opt');
+    // Флажок и число — по первой строке подписи, а не посередине двух строк.
+    expect(prop(opt, 'align-items')).toBe('flex-start');
+    expect(prop(rule(mainCss, '.opt .c'), 'margin-left')).toBe('auto');
+    // У «Нельзя передать» шрифт как у соседних строк, число не уходит строкой ниже.
+    const long = rule(mainCss, '.opt.long .lbl');
+    expect(prop(long, 'flex')).toBe('1');
+    expect(prop(long, 'min-width')).toBe('0');
+    expect(mainCss).not.toMatch(/\.opt\.long\s*\{[^}]*(font-size|flex-wrap)/);
   });
 
   it('lets only the last card pill shrink, with an ellipsis instead of a letter cut in half', () => {
