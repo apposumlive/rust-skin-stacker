@@ -60,7 +60,7 @@
   "filters.untradableHint": "Дропы Twitch и другие предметы, которые нельзя передать. Делить и собирать в них нечего.",
   "filters.type": "Тип",
   "filters.noTypes": "Типов нет",
-  "stats.total": "Всего",
+  "stats.total": "Всего штук",
   "stats.records": "Записей в Steam",
   "stats.stacks": "Стопок",
   "stats.untradable": "Нельзя передать",
