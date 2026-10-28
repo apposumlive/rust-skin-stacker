@@ -713,10 +713,17 @@ describe('setUiScale', () => {
     expect(getState().settings.uiScale).toBe(125);
   });
 
-  it('clears the scale error once the scale is saved', async () => {
-    setState({ error: { code: 'zoomFailed', status: null } });
+  it('clears its own save error once a later save worked, but not a zoom error', async () => {
+    useApi(fakeApi({ saveSettings: saveFails }));
+    await setUiScale(110);
+    expect(getState().error).toEqual({ code: 'settingsNotSaved', status: null });
+    useApi(fakeApi());
     await setUiScale(110);
     expect(getState().error).toBeNull();
+    // Ошибку зума показал не этот путь: удачное сохранение её не убирает.
+    setState({ error: { code: 'zoomFailed', status: null } });
+    await setUiScale(125);
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
   });
 
   it('leaves other errors and a scale error shown during the save', async () => {

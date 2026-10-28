@@ -275,6 +275,8 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 // Номер последнего сохранения масштаба с клавиш: ответ на более раннее нажатие в окно не попадает.
 let scaleSave = 0;
+// Ошибка последнего неудачного сохранения масштаба: её убирает следующее удачное.
+let scaleSaveError: UiError | null = null;
 
 /** Ошибка масштаба (не сохранился, не применился): на главном экране — плашкой, на экране входа — в `error`. */
 export function showScaleError(error: UiError): void {
@@ -283,12 +285,12 @@ export function showScaleError(error: UiError): void {
 }
 
 /**
- * Зум или сохранение масштаба прошли: ошибка `zoomFailed` больше не нужна. `before` — ошибка в окне, когда вызов
- * начался: убирается только она. Ошибка, которую показали во время вызова (тем же нажатием клавиши), остаётся.
+ * Убирает ошибку масштаба, которую показал тот же источник (`own`), если она всё ещё на экране: удачный зум убирает
+ * только свой отказ, удачное сохранение — только свою ошибку сохранения. Чужие ошибки, в том числе «окно не сообщает
+ * о своих изменениях», остаются: они по-прежнему верны.
  */
-export function clearScaleError(before: UiError | null): void {
-  const error = getState().error;
-  if (error && error === before && error.code === 'zoomFailed') setState({ error: null });
+export function clearScaleError(own: UiError | null): void {
+  if (own !== null && getState().error === own) setState({ error: null });
 }
 
 /** Кнопка «Закрыть» на плашке ошибки. */
@@ -303,14 +305,16 @@ export function dismissError(): void {
  */
 export async function setUiScale(uiScale: number): Promise<void> {
   const mine = ++scaleSave;
-  const before = getState().error;
   try {
     const saved = await api.saveSettings({ ...getState().settings, uiScale });
     if (mine !== scaleSave) return;
     setState({ settings: saved });
-    clearScaleError(before);
+    clearScaleError(scaleSaveError);
+    scaleSaveError = null;
   } catch (e) {
-    if (mine === scaleSave) showScaleError(asUiError(e));
+    if (mine !== scaleSave) return;
+    scaleSaveError = asUiError(e);
+    showScaleError(scaleSaveError);
   }
 }
 
