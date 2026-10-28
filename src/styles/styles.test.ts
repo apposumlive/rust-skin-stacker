@@ -106,10 +106,39 @@ describe('layout', () => {
     expect(prop(rule(panelCss, '.queue'), 'overflow-y')).toBe('auto');
   });
 
-  it('keeps the long «Непередаваемые» label inside the filter column: smaller type, the count may wrap below', () => {
+  it('keeps the long «Непередаваемые» label next to its box in the narrow filter column, the count may wrap below', () => {
+    // Ширина слова «Непередаваемые» в Manrope 500, в em (замер в Chrome: 110,4 px при 13 px).
+    const LABEL_EM = 8.5;
+    const narrow = media(mainCss, '(max-width: 1099px)');
+    const own = (selector: string, name: string) => {
+      try {
+        return prop(rule(narrow, selector), name);
+      } catch {
+        return prop(rule(mainCss, selector), name);
+      }
+    };
+    const column = Number(prop(rule(narrow, '.wrap'), 'grid-template-columns').match(/^(\d+)px/)![1]);
+    const border = parseFloat(prop(rule(mainCss, '.filters'), 'border-right'));
+    const sides = own('.filters', 'padding').split(/\s+/).map(parseFloat);
+    const inner = column - border - 2 * (sides[1] ?? sides[0]);
     const long = rule(mainCss, '.opt.long');
-    expect(parseFloat(prop(long, 'font-size'))).toBeLessThan(parseFloat(prop(rule(mainCss, '.opt'), 'font-size')));
+    const gap = parseFloat(/(?:^|[;\s])gap\s*:/.test(long) ? prop(long, 'gap') : prop(rule(mainCss, '.opt'), 'gap'));
+    const line = parseFloat(prop(rule(mainCss, '.box'), 'width')) + gap + parseFloat(prop(long, 'font-size')) * LABEL_EM;
+    expect(line).toBeLessThanOrEqual(inner);
     expect(prop(long, 'flex-wrap')).toBe('wrap');
+  });
+
+  it('lets only the last card pill shrink, with an ellipsis instead of a letter cut in half', () => {
+    // Плашки стопок («×5») не сжимаются; последняя («3 по одному» или «+N») сжимается и обрезается многоточием.
+    const pill = rule(mainCss, '.pill');
+    expect(prop(pill, 'flex')).toBe('none');
+    expect(prop(pill, 'white-space')).toBe('nowrap');
+    expect(prop(pill, 'font-size')).toBe('12px');
+    const last = rule(mainCss, '.pill:last-child');
+    expect(prop(last, 'flex-shrink')).toBe('1');
+    expect(prop(last, 'min-width')).toBe('0');
+    expect(prop(last, 'overflow')).toBe('hidden');
+    expect(prop(last, 'text-overflow')).toBe('ellipsis');
   });
 
   it('makes the big picture smaller in a low window', () => {

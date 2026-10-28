@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { iconUrl } from '../format';
-import { createPrefetcher } from './prefetch';
+import { createPrefetcher, IMAGE_TIMEOUT, loadImage } from './prefetch';
 
 const url = (hash: string) => iconUrl(hash, 128, 0);
 const names = (count: number, prefix = 'h') => Array.from({ length: count }, (_, i) => `${prefix}${i}`);
@@ -254,5 +254,54 @@ describe('createPrefetcher', () => {
     prefetch.start(['a']);
     await vi.advanceTimersByTimeAsync(1500);
     expect(load).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('loadImage', () => {
+  /** Картинка, у которой тест сам вызывает onload / onerror. */
+  class FakeImage {
+    static last: FakeImage | null = null;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    src = '';
+    constructor() {
+      FakeImage.last = this;
+    }
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('Image', FakeImage);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const watch = (promise: Promise<void>) => {
+    const state = { done: false };
+    void promise.then(() => {
+      state.done = true;
+    });
+    return state;
+  };
+
+  it('ends when the picture loads or fails', async () => {
+    const loaded = watch(loadImage(url('a')));
+    expect(FakeImage.last?.src).toBe(url('a'));
+    FakeImage.last?.onload?.();
+    const failed = watch(loadImage(url('b')));
+    FakeImage.last?.onerror?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(loaded.done).toBe(true);
+    expect(failed.done).toBe(true);
+  });
+
+  it('counts a request that hangs for 20 s as finished, so it does not hold a prefetch slot', async () => {
+    expect(IMAGE_TIMEOUT).toBe(20_000);
+    const hanging = watch(loadImage(url('a')));
+    await vi.advanceTimersByTimeAsync(IMAGE_TIMEOUT - 1);
+    expect(hanging.done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(hanging.done).toBe(true);
   });
 });

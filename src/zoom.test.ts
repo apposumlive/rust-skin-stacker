@@ -1,10 +1,55 @@
 import { describe, expect, it } from 'vitest';
 import type { KeyLike } from './keys';
-import { effectiveScale, stepScale, UI_SCALES, zoomKey } from './zoom';
+import { AUTO, autoScale, chosenScale, effectiveScale, stepScale, UI_SCALES, zoomKey } from './zoom';
 
 describe('UI_SCALES', () => {
   it('is the list of the core settings', () => {
     expect(UI_SCALES).toEqual([100, 110, 125, 150]);
+  });
+});
+
+describe('autoScale', () => {
+  it('gives 125 from 1400 px of screen height', () => {
+    // Экран 1440 px при масштабе Windows 100 % и 4K при 150 %.
+    expect(autoScale(1440)).toBe(125);
+    expect(autoScale(1400)).toBe(125);
+    expect(autoScale(2160)).toBe(125);
+  });
+
+  it('gives 110 from 1150 px', () => {
+    // Экран 1440 px при масштабе Windows 125 %: 1152 логических пикселя.
+    expect(autoScale(1399)).toBe(110);
+    expect(autoScale(1152)).toBe(110);
+    expect(autoScale(1150)).toBe(110);
+  });
+
+  it('gives 100 below, and when the screen is unknown', () => {
+    expect(autoScale(1149)).toBe(100);
+    expect(autoScale(1080)).toBe(100);
+    expect(autoScale(0)).toBe(100);
+  });
+});
+
+describe('chosenScale', () => {
+  it('takes the scale by the screen for «Auto»', () => {
+    expect(AUTO).toBe(0);
+    expect(chosenScale(AUTO, 1440)).toBe(125);
+    expect(chosenScale(AUTO, 1080)).toBe(100);
+    expect(chosenScale(AUTO, 0)).toBe(100);
+  });
+
+  it('keeps a scale of the list whatever the screen', () => {
+    for (const scale of UI_SCALES) {
+      expect(chosenScale(scale, 1440)).toBe(scale);
+      expect(chosenScale(scale, 1080)).toBe(scale);
+    }
+  });
+
+  it('takes the nearest value of the list for anything else', () => {
+    expect(chosenScale(120, 1080)).toBe(125);
+    expect(chosenScale(104, 1440)).toBe(100);
+    expect(chosenScale(400, 1080)).toBe(150);
+    expect(chosenScale(-5, 1440)).toBe(100);
   });
 });
 

@@ -3,11 +3,20 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
+import { currentMonitor, getCurrentWindow } from '@tauri-apps/api/window';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Lang } from './i18n';
 import type { Inventory, Operation, Plan, Progress, Settings, StartResult, TokenInfo, UiError } from './types';
 
 export const TOKEN_PAGE = 'https://steamcommunity.com/pointssummary/ajaxgetasyncconfig';
+
+/** Размер окна и высота экрана в логических пикселях: от зума WebView они не зависят. */
+export interface WindowMetrics {
+  width: number;
+  height: number;
+  /** 0 — экран неизвестен. */
+  monitorHeight: number;
+}
 
 export interface Api {
   setToken(raw: string): Promise<TokenInfo>;
@@ -23,6 +32,31 @@ export interface Api {
   openTokenPage(): Promise<void>;
   /** Зум всего окна: 1 — 100 %, 1.25 — 125 %. */
   setZoom(factor: number): Promise<void>;
+  windowMetrics(): Promise<WindowMetrics>;
+  /** Окно изменило размер или перешло на экран с другим масштабом системы. */
+  onWindowChange(callback: () => void): Promise<() => void>;
+}
+
+async function tauriWindowMetrics(): Promise<WindowMetrics> {
+  const win = getCurrentWindow();
+  const [size, factor, monitor] = await Promise.all([win.innerSize(), win.scaleFactor(), currentMonitor()]);
+  const { width, height } = size.toLogical(factor);
+  return { width, height, monitorHeight: monitor ? monitor.size.toLogical(monitor.scaleFactor).height : 0 };
+}
+
+async function onTauriWindowChange(callback: () => void): Promise<() => void> {
+  const win = getCurrentWindow();
+  const offResized = await win.onResized(() => callback());
+  try {
+    const offScale = await win.onScaleChanged(() => callback());
+    return () => {
+      offResized();
+      offScale();
+    };
+  } catch (e) {
+    offResized();
+    throw e;
+  }
 }
 
 const tauriApi: Api = {
@@ -38,6 +72,8 @@ const tauriApi: Api = {
   onProgress: (callback) => listen<Progress>('run-progress', (event) => callback(event.payload)),
   openTokenPage: () => openUrl(TOKEN_PAGE),
   setZoom: (factor) => getCurrentWebview().setZoom(factor),
+  windowMetrics: tauriWindowMetrics,
+  onWindowChange: onTauriWindowChange,
 };
 
 export let api: Api = tauriApi;

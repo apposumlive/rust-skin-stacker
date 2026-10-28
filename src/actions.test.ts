@@ -65,6 +65,8 @@ function fakeApi(over: Partial<Api> = {}): Api {
     onProgress: async () => () => {},
     openTokenPage: async () => {},
     setZoom: async () => {},
+    windowMetrics: async () => ({ width: 1440, height: 900, monitorHeight: 1080 }),
+    onWindowChange: async () => () => {},
     ...over,
   };
 }

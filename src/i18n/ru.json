@@ -35,6 +35,7 @@
   "error.busy": "Операция уже идёт.",
   "error.noInventory": "Сначала загрузите инвентарь.",
   "error.settingsNotSaved": "Не получилось сохранить настройки.",
+  "error.zoomFailed": "Не получилось изменить масштаб.",
   "error.unknown": "Что-то пошло не так. Скопируйте журнал и опишите проблему в issue на GitHub.",
 
   "top.splitAll": "Разделить всё",
@@ -211,7 +212,8 @@
   "settings.language": "Язык",
   "settings.system": "Как в системе",
   "settings.scale": "Масштаб интерфейса",
-  "settings.scaleHint": "Ctrl\u00a0+\u00a0= и Ctrl\u00a0+\u00a0− меняют масштаб, Ctrl\u00a0+\u00a00\u00a0возвращает 100%. Если окно маленькое, масштаб уменьшается сам, чтобы всё поместилось.",
+  "settings.scaleAuto": "Авто (сейчас {value})",
+  "settings.scaleHint": "Ctrl\u00a0+\u00a0= и Ctrl\u00a0+\u00a0− меняют масштаб, Ctrl\u00a0+\u00a00\u00a0возвращает «Авто». Если окно маленькое, масштаб уменьшается сам, чтобы всё поместилось.",
   "settings.delay": "Пауза между запросами",
   "settings.delayHint": "Чем пауза короче, тем быстрее идёт операция, но тем чаще Steam просит подождать. По умолчанию 1,5\u00a0с.",
   "settings.delayValue": "{value}\u00a0с",

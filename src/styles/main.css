@@ -42,7 +42,8 @@
 .opt { width: 100%; display: flex; align-items: center; gap: 10px; font-size: 14px; padding: 6px 0; text-align: left; border-radius: 6px; }
 .opt:hover .box { border-color: var(--text-3); }
 .opt .c { margin-left: auto; color: var(--text-2); font-size: 13px; }
-/* Длинная подпись «Непередаваемые» не помещается в колонку вместе с числом: шрифт мельче, число уходит строкой ниже. */
+/* Длинная подпись «Непередаваемые» не помещается в колонку вместе с числом: шрифт мельче, число уходит строкой ниже.
+   В узкой колонке подпись остаётся рядом с флажком за счёт боковых отступов 12px (@media ниже). */
 .opt.long { font-size: 13px; flex-wrap: wrap; row-gap: 0; }
 .box {
   width: 18px; height: 18px; flex: none; border-radius: 5px; border: 1.5px solid #3d4357; display: grid; place-items: center;
@@ -90,10 +91,12 @@
 .imgbox img { width: 84px; height: 84px; object-fit: contain; }
 .imgbox .ti { font-size: 28px; color: var(--text-3); }
 .layout { display: flex; gap: 4px; margin-top: 8px; height: 20px; overflow: hidden; }
+/* Плашки стопок не сжимаются. Последняя («3 по одному» или «+N») сжимается и обрезается многоточием, а не посреди буквы. */
 .pill {
-  height: 20px; padding: 0 7px; border-radius: 5px; background: var(--card-2); font-size: 12px; font-weight: 700;
-  color: var(--text-2); display: flex; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums;
+  flex: none; height: 20px; padding: 0 7px; border-radius: 5px; background: var(--card-2); font-size: 12px; font-weight: 700;
+  line-height: 20px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums;
 }
+.pill:last-child { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .pill.st { color: var(--text); }
 .card.sel .pill { background: #2c3246; }
 .card.skeleton {
@@ -115,6 +118,7 @@
 /* Узкое окно (от 1024 px): боковые колонки уже, чтобы в сетке было 3 колонки карточек. */
 @media (max-width: 1099px) {
   .wrap { grid-template-columns: 168px minmax(0, 1fr) 304px; }
+  .filters { padding: 16px 12px; }
   .content { padding: 16px 14px 0; }
   .side { padding: 16px; }
   .acts .btn { padding: 0 10px; }

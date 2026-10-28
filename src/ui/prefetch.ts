@@ -20,12 +20,23 @@ export interface PrefetchOptions {
   delayMs?: number;
 }
 
-/** Боевая загрузка: картинка уходит в кэш браузера. Ошибка — тоже конец загрузки: подгрузка не ошибается. */
+/** Через сколько миллисекунд зависшая загрузка считается законченной. */
+export const IMAGE_TIMEOUT = 20_000;
+
+/**
+ * Боевая загрузка: картинка уходит в кэш браузера. Ошибка — тоже конец загрузки: подгрузка не ошибается.
+ * Зависший запрос через IMAGE_TIMEOUT тоже считается законченным и не держит место подгрузки.
+ */
 export function loadImage(url: string): Promise<void> {
   return new Promise((resolve) => {
     const img = new Image();
-    img.onload = () => resolve();
-    img.onerror = () => resolve();
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, IMAGE_TIMEOUT);
+    img.onload = done;
+    img.onerror = done;
     img.src = url;
   });
 }
