@@ -244,7 +244,7 @@ components:
     backgroundColor: "{colors.panel}"
     textColor: "{colors.text}"
     rounded: "{rounded.xl}"
-    padding: "22px 26px"
+    padding: "20px 26px"
     width: "560px"
 ---
 
@@ -402,7 +402,8 @@ Quiet, compact controls on dark: solid fills, no gradients, one filled button pe
 ### Filters and fields
 - **Search:** 38px, 9px radius, Ink Card; Fog Grey placeholder and icon; focus shows an inset 1.5px indigo ring.
 - **Options:** rows of 18px boxes with 1.5px Checkbox Edge border: round for single choice ("Show"), 5px radius for multiple ("Type"); checked is solid indigo with a white check; the count is 13px Fog Grey, tabular, right aligned. Group headings use the Label style.
-- **Inventory totals:** a definition list pinned to the column bottom, 13px Fog Grey labels with Mist White 700 values.
+- **Untradable switch:** under the "Show" options, a square checkbox "Непередаваемые" ("Untradable") in 13px with its count; in the narrow column the count wraps to the line below. It shows hidden Twitch drops and the like, and appears only when the inventory has such items.
+- **Inventory totals:** a definition list pinned to the column bottom, 13px Fog Grey labels with Mist White 700 values. When the inventory has hidden untradable items, a "Нельзя передать" ("Untradable") row counts their pieces.
 - **Select (sort, language):** Ink Card, 1.5px hairline border, 10px radius, 40px in the drawer (34px, borderless, 8px radius inside the grid bar); focus turns the border indigo.
 - **Token field:** monospace 13px, Night Ground fill, 1.5px hairline border, 10px radius, resizes vertically, about three lines (76px min); focus turns the border indigo; the status line below is 13px, green when valid and red when not.
 
@@ -427,13 +428,13 @@ A 192px tile: 13px / 700 name (one line, ellipsis), 13px sub-line, a 96px image 
 - **Dock:** buttons in a grid with 8px gaps (two columns for pairs such as "Split off 1" and "Combine"); the Run button is 50px, Cancel 40px; the item and multi views end with a 13px Fog Grey footer line.
 
 ### Error banner
-Fault Wash fill, Pale Fault Red 13px text, 10px radius, 8px 8px 8px 14px padding, an 18px alert icon and a 32px action button pushed right (primary for a new token, secondary for retry). It rises in over 200ms and carries `role="alert"`.
+Fault Wash fill, Pale Fault Red 13px text, 10px radius, 8px 8px 8px 14px padding, an 18px alert icon and a 32px action button pushed right (primary for a new token, secondary for retry, secondary "Dismiss" for a scale error, which also goes away by itself once the scale changes or saves). It rises in over 200ms and carries `role="alert"`.
 
 ### Settings drawer
 Slides in from the right over a scrim: 380px, Slate Panel, 1px left hairline, 22px padding, 18px gaps, Drawer edge shadow, 200ms slide of 24px with fade. Heading 20px / 800 and a close icon button; label-over-control fields; two buttons at the bottom (primary Save, secondary Close). The rest of the window is inert while it is open and Tab is trapped inside.
 
 ### Sign-in card
-Centred card, `min(560px, 100%)`, Slate Panel with a 1px hairline, 16px radius, 22px by 26px padding, 12px gaps, rising in over 250ms. Wordmark and language button on top, a 24px / 800 title, three numbered steps (24px circular badges in Indigo Wash with Text Indigo), a secondary button to open the token page, the token field, the status line, a primary Continue that stays disabled until the token validates, a "why this is safe" block (Ink Card, 12px radius, green shield icon, small grey bullets) and a centred 13px disclaimer. The non-affiliation line ("Not affiliated with Valve or Facepunch") stays on this screen and in settings.
+Centred card, `min(560px, 100%)`, Slate Panel with a 1px hairline, 16px radius, 20px by 26px padding, 10px gaps, 16px of screen padding above and below, rising in over 250ms. The empty status line is pulled up to 4px under the token field and 8px above Continue, so the screen fits 1152 x 720 (a 1440 x 900 window at 125%) and 1280 x 800 without scrolling; at 1024 x 640 it scrolls, with Continue still in view. Wordmark and language button on top, a 24px / 800 title, three numbered steps (24px circular badges in Indigo Wash with Text Indigo), a secondary button to open the token page, the token field, the status line, a primary Continue that stays disabled until the token validates, a "why this is safe" block (Ink Card, 12px radius, green shield icon, small grey bullets) and a centred 13px disclaimer. The non-affiliation line ("Not affiliated with Valve or Facepunch") stays on this screen and in settings.
 
 ### Named Rules
 **The Preview-In-Place Rule.** What an operation will do is shown on the grid before it runs: affected cards say "becomes ...", the rest dim to 35%, and the result closes with a reconciliation verdict in the panel.
