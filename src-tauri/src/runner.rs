@@ -621,6 +621,7 @@ mod tests {
             SteamError::RateLimited { retry_after: None },
             SteamError::Network("connection failed"),
             SteamError::BadResponse,
+            SteamError::Stopped,
         ] {
             assert!(!is_refusal(&e), "{e:?}");
         }

@@ -14,9 +14,10 @@ use crate::journal::Journal;
 use crate::plan::{self, Operation, Plan};
 use crate::runner::{self, Progress, RunConfig, RunOutcome, SteamStacker, StopReason};
 use crate::settings::{self, Settings};
-use crate::steam::{SleepFn, SteamClient, SteamError};
+use crate::steam::{ReadControl, SleepFn, SteamClient, SteamError};
 use crate::token::{self, Token, TokenError, TokenInfo};
 
+/// Ход запуска и ожидание по 429 при любом чтении инвентаря: перед запуском, после него и при загрузке.
 pub const PROGRESS_EVENT: &str = "run-progress";
 
 /// Ошибка для окна: код, по которому окно берёт текст из i18n.
@@ -61,6 +62,7 @@ impl From<SteamError> for UiError {
             SteamError::BadResponse => UiError::new("badResponse"),
             SteamError::PagingLoop => UiError::new("pagingLoop"),
             SteamError::TooLarge => UiError::new("tooLarge"),
+            SteamError::Stopped => UiError::new("stopped"),
         }
     }
 }
@@ -211,14 +213,30 @@ impl AppState {
         Ok(token)
     }
 
-    /// Читает инвентарь, пока этот токен в сессии. Забыли или заменили — чтение обрывается.
-    async fn read_inventory(&self, token: &Token, lang: &str) -> Result<Inventory, UiError> {
+    /// Читает инвентарь, пока этот токен в сессии. Забыли или заменили — чтение обрывается,
+    /// как и по «Остановить». Ожидание по 429 окно видит тем же событием, что и в запуске.
+    async fn read_inventory(
+        &self,
+        token: &Token,
+        lang: &str,
+        emit: &(dyn Fn(Progress) + Sync),
+    ) -> Result<Inventory, UiError> {
         // Подписка раньше проверки: «Забыть» между ними не потеряется.
         let forgotten = self.forgotten.notified();
         if !self.session.lock().await.holds(token) {
             return Err(self.read_dropped());
         }
-        let read = inventory::load(&self.client, token, steam_language(lang));
+        let on_wait = |seconds| {
+            self.journal.add(format!(
+                "inventory read: Steam asked to slow down, waiting {seconds} s"
+            ));
+            emit(Progress::Waiting { seconds });
+        };
+        let control = ReadControl {
+            stop: &self.stop,
+            on_wait: &on_wait,
+        };
+        let read = inventory::load(&self.client, token, steam_language(lang), &control);
         let result = tokio::select! {
             biased;
             () = forgotten => return Err(self.read_dropped()),
@@ -232,6 +250,10 @@ impl AppState {
                     inv.total()
                 ));
                 Ok(inv)
+            }
+            Err(SteamError::Stopped) => {
+                self.journal.add("inventory read stopped by the user");
+                Err(SteamError::Stopped.into())
             }
             Err(e) => {
                 self.journal.add(format!("inventory read failed: {e}"));
@@ -258,9 +280,19 @@ impl AppState {
         true
     }
 
-    pub async fn load_inventory(&self, lang: &str, now: i64) -> Result<Inventory, UiError> {
+    pub async fn load_inventory(
+        &self,
+        lang: &str,
+        now: i64,
+        emit: impl Fn(Progress) + Sync,
+    ) -> Result<Inventory, UiError> {
+        // «Остановить», нажатая раньше (например, когда прошлое чтение уже кончилось), это чтение не обрывает.
+        // Во время запуска флаг его: сбросом потерялась бы просьба остановить запуск.
+        if !self.running.load(Ordering::SeqCst) {
+            self.stop.store(false, Ordering::SeqCst);
+        }
         let token = self.token(now).await?;
-        let inv = self.read_inventory(&token, lang).await?;
+        let inv = self.read_inventory(&token, lang, &emit).await?;
         if !self.store(&token, &inv, None).await {
             self.journal
                 .add("token forgotten or replaced during the read, nothing stored");
@@ -285,7 +317,7 @@ impl AppState {
         operation: Operation,
         lang: &str,
         now: i64,
-        emit: impl FnMut(Progress),
+        emit: impl Fn(Progress) + Sync,
     ) -> Result<StartResult, UiError> {
         if self.running.swap(true, Ordering::SeqCst) {
             return Err(UiError::new("busy"));
@@ -300,14 +332,21 @@ impl AppState {
         operation: Operation,
         lang: &str,
         now: i64,
-        emit: impl FnMut(Progress),
+        emit: impl Fn(Progress) + Sync,
     ) -> Result<StartResult, UiError> {
         self.stop.store(false, Ordering::SeqCst);
         let token = self.token(now).await?;
         let previewed = self.session.lock().await.last_plan.clone();
 
-        // Правило 1: перед запуском инвентарь перечитывается.
-        let before = self.read_inventory(&token, lang).await?;
+        // Правило 1: перед запуском инвентарь перечитывается. «Остановить» во время этого чтения — ошибка `stopped`:
+        // в Steam ничего не ушло, а предпросмотренный план остаётся в сессии.
+        let before = self.read_inventory(&token, lang, &emit).await?;
+        // Нажатие пришло, когда последняя страница уже прочитана: всё равно ничего не шлём и план в сессии не меняем.
+        if self.stop.load(Ordering::SeqCst) {
+            self.journal
+                .add("stop requested before the run, nothing sent");
+            return Err(SteamError::Stopped.into());
+        }
         let plan = plan::build(&before, &operation);
         if !self.store(&token, &before, Some(plan.clone())).await {
             self.journal
@@ -344,9 +383,13 @@ impl AppState {
             &self.stop,
             &self.sleep,
             &self.journal,
-            emit,
+            &emit,
         )
         .await;
+        // Нажатие «Остановить» во время запуска сработало: дальше флаг — для чтения для сверки, его обрывает только
+        // новое нажатие. Сброс сразу, до любого ожидания: окно снова включает «Остановить», получив последнее
+        // событие запуска, а оно уже ушло.
+        self.stop.store(false, Ordering::SeqCst);
         self.journal.add(format!(
             "finished: {:?}, done {}, errors {}",
             outcome.reason, outcome.done, outcome.errors
@@ -366,8 +409,9 @@ impl AppState {
             });
         }
 
-        // Правило 7: сверка по свежему чтению инвентаря.
-        match self.read_inventory(&token, lang).await {
+        // Правило 7: сверка по свежему чтению инвентаря. Остановка запуска её не отменяет; «Остановить» во время
+        // этого чтения обрывает его — тогда сверки нет.
+        match self.read_inventory(&token, lang, &emit).await {
             Ok(after) => {
                 // «Забыть» во время чтения: в сессию ничего не пишем, окну инвентарь не отдаём.
                 if !self.store(&token, &after, None).await {
@@ -455,10 +499,15 @@ pub async fn forget_token(state: State<'_, AppState>) -> Result<(), UiError> {
 
 #[tauri::command]
 pub async fn load_inventory(
+    app: AppHandle,
     state: State<'_, AppState>,
     lang: String,
 ) -> Result<Inventory, UiError> {
-    state.load_inventory(&lang, now()).await
+    state
+        .load_inventory(&lang, now(), |progress| {
+            let _ = app.emit(PROGRESS_EVENT, progress);
+        })
+        .await
 }
 
 #[tauri::command]
@@ -508,7 +557,7 @@ mod tests {
     use crate::token::test_token;
     use serde_json::json;
     use std::sync::Arc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -564,7 +613,7 @@ mod tests {
     async fn previewed(server: &MockServer, settings: Settings) -> (AppState, SleepLog) {
         let (state, slept) = state_with(server, settings);
         with_token(&state).await;
-        state.load_inventory("en", NOW).await.unwrap();
+        state.load_inventory("en", NOW, |_| {}).await.unwrap();
         state.preview(Operation::SplitAll).await.unwrap();
         (state, slept)
     }
@@ -600,6 +649,41 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(10), wait)
             .await
             .expect("the request never reached the fake Steam");
+    }
+
+    /// События окну, которые прислало ядро.
+    #[derive(Default)]
+    struct Events(Mutex<Vec<Progress>>);
+
+    impl Events {
+        fn push(&self, progress: Progress) {
+            self.0.lock().unwrap().push(progress);
+        }
+
+        fn all(&self) -> Vec<Progress> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    /// Нажимает «Остановить», когда до поддельного Steam дошло `count` GET, и возвращает момент нажатия.
+    /// Ответ на последний из них ещё в пути.
+    async fn stop_at_get(state: &AppState, server: &MockServer, count: usize) -> Instant {
+        wait_for_requests(server, "GET", count).await;
+        state.stop();
+        Instant::now()
+    }
+
+    fn assert_within_a_second(pressed: Instant) {
+        let took = pressed.elapsed();
+        assert!(
+            took < Duration::from_secs(1),
+            "the read took {took:?} to stop"
+        );
+    }
+
+    /// Ответ, который задерживается на 5 с: если «Остановить» его не оборвала, тест это заметит по времени.
+    fn slow(reply: ResponseTemplate) -> ResponseTemplate {
+        reply.set_delay(Duration::from_secs(5))
     }
 
     fn assert_idle(state: &AppState) {
@@ -656,7 +740,7 @@ mod tests {
     async fn loading_needs_a_token() {
         let server = MockServer::start().await;
         let err = state_for(&server)
-            .load_inventory("en", NOW)
+            .load_inventory("en", NOW, |_| {})
             .await
             .unwrap_err();
         assert_eq!(err.code, "noToken");
@@ -675,7 +759,11 @@ mod tests {
         token.expires_at = NOW - 1;
         state.session.lock().await.token = Some(token);
         assert_eq!(
-            state.load_inventory("en", NOW).await.unwrap_err().code,
+            state
+                .load_inventory("en", NOW, |_| {})
+                .await
+                .unwrap_err()
+                .code,
             "tokenExpired"
         );
     }
@@ -717,13 +805,13 @@ mod tests {
             .await;
         let state = state_for(&server);
         with_token(&state).await;
-        state.load_inventory("en", NOW).await.unwrap();
+        state.load_inventory("en", NOW, |_| {}).await.unwrap();
         assert_eq!(
             state.preview(Operation::SplitAll).await.unwrap().requests,
             2
         );
 
-        let mut events = Vec::new();
+        let events = Events::default();
         let result = state
             .start(Operation::SplitAll, "en", NOW, |p| events.push(p))
             .await
@@ -742,7 +830,7 @@ mod tests {
         assert_eq!((reconciliation.before, reconciliation.after), (3, 3));
         assert!(reconciliation.mismatches.is_empty());
         assert!(inventory.is_some());
-        assert!(!events.is_empty());
+        assert!(!events.all().is_empty());
         assert!(state.journal_text().contains("check: before 3, after 3"));
     }
 
@@ -767,7 +855,7 @@ mod tests {
             .await;
         let state = state_for(&server);
         with_token(&state).await;
-        state.load_inventory("en", NOW).await.unwrap();
+        state.load_inventory("en", NOW, |_| {}).await.unwrap();
         state.preview(Operation::SplitAll).await.unwrap();
         let result = state
             .start(Operation::SplitAll, "en", NOW, |_| {})
@@ -974,8 +1062,10 @@ mod tests {
         assert_eq!(state.session.lock().await.token, Some(test_token()));
     }
 
+    /// «Остановить» во время чтения перед запуском обрывает чтение: в Steam ничего не уходит,
+    /// предпросмотренный план остаётся, и его можно запустить снова.
     #[tokio::test]
-    async fn stop_pressed_during_the_pre_run_read_is_honoured() {
+    async fn stop_during_the_pre_run_read_ends_it_within_a_second() {
         let server = MockServer::start().await;
         // Первое чтение (загрузка) быстрое, второе (перед запуском) медленное.
         Mock::given(method("GET"))
@@ -986,7 +1076,7 @@ mod tests {
             .await;
         Mock::given(method("GET"))
             .and(path(INV))
-            .respond_with(inventory_reply(3).set_delay(Duration::from_millis(300)))
+            .respond_with(slow(inventory_reply(3)))
             .mount(&server)
             .await;
         Mock::given(method("POST"))
@@ -996,17 +1086,216 @@ mod tests {
             .await;
         let (state, _) = previewed(&server, Settings::default()).await;
 
-        let (result, ()) =
+        let (result, pressed) = tokio::join!(
+            state.start(Operation::SplitAll, "en", NOW, |_| {}),
+            stop_at_get(&state, &server, 2)
+        );
+        assert_within_a_second(pressed);
+        assert_eq!(result.unwrap_err().code, "stopped");
+        assert_eq!(requests_to(&server, "POST").await, 0);
+        assert!(state.session.lock().await.last_plan.is_some());
+        assert!(
+            state
+                .journal_text()
+                .contains("inventory read stopped by the user")
+        );
+        assert_idle(&state);
+    }
+
+    #[tokio::test]
+    async fn stop_during_a_load_ends_the_read_within_a_second() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(slow(inventory_reply(3)))
+            .mount(&server)
+            .await;
+        let state = state_for(&server);
+        with_token(&state).await;
+
+        let (result, pressed) = tokio::join!(
+            state.load_inventory("en", NOW, |_| {}),
+            stop_at_get(&state, &server, 1)
+        );
+        assert_within_a_second(pressed);
+        assert_eq!(result.unwrap_err().code, "stopped");
+        assert!(state.session.lock().await.inventory.is_none());
+    }
+
+    /// «Остановить», нажатая, когда ничего не шло, следующее чтение не обрывает.
+    #[tokio::test]
+    async fn an_old_stop_does_not_stop_the_next_load() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 3).await;
+        let state = state_for(&server);
+        with_token(&state).await;
+        state.stop();
+        let inv = state.load_inventory("en", NOW, |_| {}).await.unwrap();
+        assert_eq!(inv.total(), 3);
+    }
+
+    /// Загрузка во время запуска флаг не сбрасывает: иначе потерялась бы просьба остановить запуск.
+    #[tokio::test]
+    async fn a_load_during_a_run_keeps_the_stop_of_the_run() {
+        let server = MockServer::start().await;
+        mount_inventory(&server, 3).await;
+        let state = state_for(&server);
+        with_token(&state).await;
+        state.running.store(true, Ordering::SeqCst);
+        state.stop();
+        let err = state.load_inventory("en", NOW, |_| {}).await.unwrap_err();
+        assert_eq!(err.code, "stopped");
+        assert!(state.stop.load(Ordering::SeqCst));
+    }
+
+    /// Первое «Остановить» останавливает запуск, но не сверку; второе, во время чтения для сверки, обрывает и её.
+    #[tokio::test]
+    async fn a_second_stop_ends_the_check_after_a_stopped_run() {
+        let server = MockServer::start().await;
+        // Загрузка и чтение перед запуском быстрые, чтение после запуска медленное.
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(4))
+            .up_to_n_times(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(slow(inventory_reply(4)))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply().set_delay(Duration::from_millis(300)))
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, pressed) =
             tokio::join!(state.start(Operation::SplitAll, "en", NOW, |_| {}), async {
-                wait_for_requests(&server, "GET", 2).await;
+                wait_for_requests(&server, "POST", 1).await;
                 state.stop();
+                stop_at_get(&state, &server, 3).await
             });
-        let StartResult::Finished { outcome, .. } = result.unwrap() else {
+        assert_within_a_second(pressed);
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            inventory,
+        } = result.unwrap()
+        else {
             panic!("expected Finished");
         };
         assert_eq!(outcome.reason, StopReason::StoppedByUser);
-        assert_eq!(outcome.done, 0);
-        assert_eq!(requests_to(&server, "POST").await, 0);
+        assert_eq!((outcome.done, outcome.total), (1, 3));
+        assert_eq!(requests_to(&server, "POST").await, 1);
+        assert!(reconciliation.is_none());
+        assert!(inventory.is_none());
+        assert_idle(&state);
+    }
+
+    /// Запуск прошёл, чтение для сверки идёт долго: «Остановить» обрывает его, сверки нет.
+    #[tokio::test]
+    async fn stop_during_the_post_run_read_ends_it_without_a_check() {
+        let server = MockServer::start().await;
+        // Загрузка и чтение перед запуском быстрые, чтение после запуска медленное.
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(2)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(slow(inventory_reply(3)))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(2)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+
+        let (result, pressed) = tokio::join!(
+            state.start(Operation::SplitAll, "en", NOW, |_| {}),
+            stop_at_get(&state, &server, 3)
+        );
+        assert_within_a_second(pressed);
+        let StartResult::Finished {
+            outcome,
+            reconciliation,
+            inventory,
+        } = result.unwrap()
+        else {
+            panic!("expected Finished");
+        };
+        assert_eq!(outcome.reason, StopReason::Finished);
+        assert_eq!(outcome.done, 2);
+        assert!(reconciliation.is_none());
+        assert!(inventory.is_none());
+        assert_idle(&state);
+    }
+
+    /// Steam попросил подождать при чтении: окно получает то же событие, что и во время запуска, журнал — строку.
+    #[tokio::test]
+    async fn rate_limit_wait_during_a_load_is_shown_to_the_window() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "7"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        mount_inventory(&server, 3).await;
+        let (state, slept) = state_with(&server, Settings::default());
+        with_token(&state).await;
+        let events = Events::default();
+        state
+            .load_inventory("en", NOW, |p| events.push(p))
+            .await
+            .unwrap();
+        assert_eq!(events.all(), vec![Progress::Waiting { seconds: 7 }]);
+        assert_eq!(*slept.lock().unwrap(), vec![Duration::from_secs(7)]);
+        assert!(
+            state
+                .journal_text()
+                .contains("inventory read: Steam asked to slow down, waiting 7 s")
+        );
+    }
+
+    /// Ожидание при чтении перед запуском окно видит раньше хода запуска.
+    #[tokio::test]
+    async fn rate_limit_wait_during_the_pre_run_read_is_shown_to_the_window() {
+        let server = MockServer::start().await;
+        // Загрузка проходит, чтение перед запуском сначала получает 429.
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "4"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        mount_inventory(&server, 3).await;
+        Mock::given(method("POST"))
+            .respond_with(split_reply())
+            .expect(2)
+            .mount(&server)
+            .await;
+        let (state, _) = previewed(&server, Settings::default()).await;
+        let events = Events::default();
+        let result = state
+            .start(Operation::SplitAll, "en", NOW, |p| events.push(p))
+            .await
+            .unwrap();
+        assert!(matches!(result, StartResult::Finished { .. }), "{result:?}");
+        let events = events.all();
+        assert_eq!(events.first(), Some(&Progress::Waiting { seconds: 4 }));
+        assert!(matches!(events[1], Progress::Request { done: 0, .. }));
     }
 
     #[tokio::test]
@@ -1136,7 +1425,10 @@ mod tests {
         with_token(&state).await;
         let token = test_token();
         state.forget_token().await;
-        let err = state.read_inventory(&token, "en").await.unwrap_err();
+        let err = state
+            .read_inventory(&token, "en", &|_| {})
+            .await
+            .unwrap_err();
         assert_eq!(err.code, "noToken");
     }
 
@@ -1152,7 +1444,7 @@ mod tests {
         with_token(&state).await;
 
         // «Забыть» и новый токен посреди чтения первой страницы.
-        let (result, ()) = tokio::join!(state.load_inventory("en", NOW), async {
+        let (result, ()) = tokio::join!(state.load_inventory("en", NOW, |_| {}), async {
             wait_for_requests(&server, "GET", 1).await;
             state.forget_token().await;
             state.set_token(&raw_token(), NOW).await.unwrap();
@@ -1179,7 +1471,7 @@ mod tests {
         with_token(&state).await;
 
         // Другой токен в сессии, пока читался инвентарь первого: чтение никто не обрывал.
-        let (result, ()) = tokio::join!(state.load_inventory("en", NOW), async {
+        let (result, ()) = tokio::join!(state.load_inventory("en", NOW, |_| {}), async {
             wait_for_requests(&server, "GET", 1).await;
             replace_token_silently(&state).await;
         });
@@ -1531,7 +1823,7 @@ mod tests {
         with_token(&state).await;
 
         // Новый токен посреди чтения первой страницы, без «Забыть».
-        let (result, info) = tokio::join!(state.load_inventory("en", NOW), async {
+        let (result, info) = tokio::join!(state.load_inventory("en", NOW, |_| {}), async {
             wait_for_requests(&server, "GET", 1).await;
             state.set_token(&raw_token(), NOW).await
         });
