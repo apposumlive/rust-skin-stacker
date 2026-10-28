@@ -24,19 +24,28 @@ const CATEGORIES = [
 
 const iconHash = (url: string): string => url.split('/economy/image/')[1]?.split('/')[0] ?? '';
 
+// Последние DROPS предметов — «дропы Twitch»: одна штука, не передаются и не продаются, даты нет. Они скрыты в сетке.
+const DROPS = 4;
+// Один одиночный предмет (не дроп) временно не передаётся: он остаётся в сетке.
+const LOCKED_FOR_NOW = 1;
+const LOCK_DAYS = 5;
+
 function demoInventory(): Inventory {
   let id = 1000;
+  const unlock = new Date(Date.now() + LOCK_DAYS * 24 * 3600 * 1000).toISOString();
   const skins: Skin[] = items.map((item, i) => {
-    const [stacks, singles] = LAYOUT[i % LAYOUT.length];
+    const drop = i >= items.length - DROPS;
+    const [stacks, singles] = drop ? [[], 1] : LAYOUT[i % LAYOUT.length];
     const amounts = [...stacks, ...Array<number>(singles).fill(1)];
+    const lockedNow = i === LOCKED_FOR_NOW;
     const records: InvRecord[] = amounts.map((amount) => ({
       assetid: String(++id),
       classid: `c${i}`,
       instanceid: '0',
       amount,
-      tradable: true,
-      marketable: true,
-      availableAfter: null,
+      tradable: !drop && !lockedNow,
+      marketable: !drop,
+      availableAfter: lockedNow ? unlock : null,
     }));
     return {
       key: item.name,

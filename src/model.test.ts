@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from './i18n';
 import {
-  apartRecords, canCombine, categoriesOf, clampCount, counts, defaultFilter, layoutOf, layoutText, nextSelection,
-  pillsOf, splitCapacity, totals, visibleSkins,
+  apartRecords, canCombine, categoriesOf, clampCount, counts, defaultFilter, isInert, layoutOf, layoutText, matches,
+  nextSelection, pillsOf, splitCapacity, totals, visibleSkins,
 } from './model';
 import type { Inventory, InvRecord, Skin } from './types';
 
@@ -55,6 +55,7 @@ describe('model', () => {
   it('filters by search, show and type, then sorts', () => {
     const i = inv([skin('Alpha', [1]), skin('Bravo', [3, 1]), skin('Charlie', [2], 'steamcat.clothing'), skin('Delta', [1, 1])]);
     const f = defaultFilter();
+    expect(f).toEqual({ search: '', show: 'all', categories: [], sort: 'amount', untradable: false });
     expect(visibleSkins(i, f).map((s) => s.key)).toEqual(['Bravo', 'Charlie', 'Delta', 'Alpha']);
     expect(visibleSkins(i, { ...f, show: 'stacks' }).map((s) => s.key)).toEqual(['Bravo', 'Charlie']);
     expect(visibleSkins(i, { ...f, show: 'dupes' }).map((s) => s.key)).toEqual(['Bravo', 'Delta']);
@@ -70,13 +71,13 @@ describe('model', () => {
     expect(canCombine(apart)).toBe(false);
     expect(canCombine(mixed)).toBe(true);
     expect(visibleSkins(i, { ...defaultFilter(), show: 'dupes' }).map((s) => s.key)).toEqual(['Mixed', 'Pair']);
-    expect(counts(i)).toEqual({ all: 4, stacks: 4, dupes: 2 });
+    expect(counts(i, defaultFilter())).toEqual({ all: 4, stacks: 4, dupes: 2, inert: 0 });
   });
 
   it('counts filters and totals', () => {
     const i: Inventory = { skins: [skin('A', [5, 1]), skin('B', [1]), skin('C', [1, 1])], unreadable: [{ assetid: null, amount: 2 }] };
-    expect(counts(i)).toEqual({ all: 3, stacks: 1, dupes: 2 });
-    expect(totals(i)).toEqual({ items: 11, records: 6, stacks: 1, unreadable: 1 });
+    expect(counts(i, defaultFilter())).toEqual({ all: 3, stacks: 1, dupes: 2, inert: 0 });
+    expect(totals(i)).toEqual({ items: 11, records: 6, stacks: 1, unreadable: 1, untradable: 0 });
   });
 
   it('lists categories once, sorted by label', () => {
@@ -121,5 +122,82 @@ describe('model', () => {
     expect(clampCount(5, 1)).toBe(1);
     expect(clampCount(1, 1)).toBe(1);
     expect(clampCount(3, 0)).toBe(1);
+  });
+});
+
+describe('untradable items with nothing to do', () => {
+  /** Запись, которую нельзя передать и продать. */
+  const locked = (assetid: string, amount = 1, over: Partial<InvRecord> = {}): InvRecord => ({
+    ...rec(assetid, amount),
+    tradable: false,
+    marketable: false,
+    ...over,
+  });
+  const skinOf = (key: string, records: InvRecord[]): Skin => ({
+    ...skin(key, []),
+    records,
+    total: records.reduce((n, r) => n + r.amount, 0),
+  });
+
+  const drop = skinOf('Drop', [locked('d1')]);
+  const drop2 = skinOf('Drop2', [locked('e1')]);
+  const later = skinOf('Later', [locked('l1', 1, { availableAfter: '2026-11-02T07:00:00Z' })]);
+  const lockedStack = skinOf('LockedStack', [locked('s1', 3)]);
+  const lockedPair = skinOf('LockedPair', [locked('p1'), locked('p2')]);
+  const mixed = skinOf('Mixed', [locked('m1'), { ...rec('m2', 1, '9') }]);
+  const plain = skin('Plain', [1]);
+  const i = inv([drop, drop2, later, lockedStack, lockedPair, mixed, plain]);
+  const shown = { ...defaultFilter(), untradable: true };
+
+  it('is inert only when every entry is locked for good and there is no stack and no pair', () => {
+    expect(isInert(drop)).toBe(true);
+    // Несколько записей, которые нельзя передать и которые не собираются между собой, — тоже ничего не сделать.
+    expect(isInert(skinOf('Odd', [locked('o1'), locked('o2', 1, { instanceid: '7' })]))).toBe(true);
+  });
+
+  it('is not inert while the lock has an end date', () => {
+    expect(isInert(later)).toBe(false);
+    // Одна запись с датой, другая без: скин ещё вернётся к обмену.
+    expect(isInert(skinOf('Half', [locked('h1'), locked('h2', 1, { instanceid: '7', availableAfter: '2026-11-02T07:00:00Z' })]))).toBe(false);
+  });
+
+  it('is not inert when there is a stack or a pair to work with', () => {
+    expect(isInert(lockedStack)).toBe(false);
+    expect(isInert(lockedPair)).toBe(false);
+  });
+
+  it('is not inert when something can be traded', () => {
+    expect(isInert(plain)).toBe(false);
+    expect(isInert(mixed)).toBe(false);
+  });
+
+  it('is not inert without entries', () => {
+    expect(isInert({ ...drop, records: [], total: 0 })).toBe(false);
+  });
+
+  it('hides inert items unless the switch is on, and keeps the other conditions', () => {
+    expect(matches(drop, defaultFilter())).toBe(false);
+    expect(matches(drop, shown)).toBe(true);
+    expect(matches(plain, defaultFilter())).toBe(true);
+    expect(matches(later, defaultFilter())).toBe(true);
+    expect(visibleSkins(i, defaultFilter()).map((s) => s.key)).toEqual(['LockedStack', 'LockedPair', 'Mixed', 'Later', 'Plain']);
+    expect(visibleSkins(i, shown).map((s) => s.key)).toEqual(['LockedStack', 'LockedPair', 'Mixed', 'Drop', 'Drop2', 'Later', 'Plain']);
+    // Поиск, «Показать» и тип работают поверх переключателя.
+    expect(visibleSkins(i, { ...defaultFilter(), search: 'drop' }).map((s) => s.key)).toEqual([]);
+    expect(visibleSkins(i, { ...shown, search: 'drop' }).map((s) => s.key)).toEqual(['Drop', 'Drop2']);
+    expect(visibleSkins(i, { ...shown, show: 'stacks' }).map((s) => s.key)).toEqual(['LockedStack']);
+    expect(visibleSkins(i, { ...shown, show: 'dupes' }).map((s) => s.key)).toEqual(['LockedPair']);
+    expect(visibleSkins(i, { ...shown, categories: ['steamcat.clothing'] }).map((s) => s.key)).toEqual([]);
+  });
+
+  it('counts «All» without the hidden items and always counts the inert ones in full', () => {
+    expect(counts(i, defaultFilter())).toEqual({ all: 5, stacks: 1, dupes: 1, inert: 2 });
+    expect(counts(i, shown)).toEqual({ all: 7, stacks: 1, dupes: 1, inert: 2 });
+  });
+
+  it('counts the pieces of inert items in the totals, and everything else as before', () => {
+    expect(totals(i)).toEqual({ items: 11, records: 9, stacks: 1, unreadable: 0, untradable: 2 });
+    expect(totals(inv([plain, lockedStack])).untradable).toBe(0);
+    expect(totals(inv([skinOf('Odd', [locked('o1'), locked('o2', 1, { instanceid: '7' })])])).untradable).toBe(2);
   });
 });

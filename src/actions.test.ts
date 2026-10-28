@@ -525,10 +525,10 @@ describe('loadInventory', () => {
 
   describe('type filter', () => {
     it('drops the checked types that are no longer in the inventory and keeps the rest of the filter', async () => {
-      setState({ filter: { search: 'a', show: 'stacks', categories: ['Tool', 'Weapon'], sort: 'name' } });
+      setState({ filter: { search: 'a', show: 'stacks', categories: ['Tool', 'Weapon'], sort: 'name', untradable: true } });
       useApi(fakeApi({ loadInventory: async () => invIn(['A', 'Weapon'], ['B', 'Outfit']) }));
       await loadInventory();
-      expect(getState().filter).toEqual({ search: 'a', show: 'stacks', categories: ['Weapon'], sort: 'name' });
+      expect(getState().filter).toEqual({ search: 'a', show: 'stacks', categories: ['Weapon'], sort: 'name', untradable: true });
     });
 
     it('does not leave an empty grid behind a checkbox nobody can clear after switching accounts', async () => {
@@ -674,6 +674,21 @@ describe('adoptInventory', () => {
     useApi(fakeApi({ start: async () => finished('finished', inv('A')) }));
     await runPlan(plan);
     expect(getState().filter).toBe(filter);
+  });
+
+  it('keeps the untradable switch and the same filter object on a re-read', async () => {
+    const filter = { ...initialFilter, untradable: true };
+    setState({ filter });
+    useApi(fakeApi({ loadInventory: async () => inv('A', 'B') }));
+    await loadInventory();
+    expect(getState().filter).toBe(filter);
+  });
+
+  it('keeps the untradable switch when «Stacks» falls back to «All»', async () => {
+    setState({ filter: { ...initialFilter, show: 'stacks', untradable: true } });
+    useApi(fakeApi({ loadInventory: async () => singles('A') }));
+    await loadInventory();
+    expect(getState().filter).toEqual({ ...initialFilter, show: 'all', untradable: true });
   });
 
   it('keeps «Stacks» when the inventory itself is empty', () => {
