@@ -4,7 +4,7 @@
 
 import type { Api } from '../api';
 import type { Inventory, InvRecord, Operation, Plan, Progress, Settings, Skin, SkinAfter } from '../types';
-import { UI_SCALES } from '../zoom';
+import { AUTO, UI_SCALES } from '../zoom';
 import items from './demo-items.json';
 
 /** Раскладка демо-инвентаря: [стопки, сколько по одному]. */
@@ -126,7 +126,7 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 
 export function createMockApi(): Api {
   let inventory = demoInventory();
-  let settings: Settings = { language: null, delayMs: 1500, uiScale: 100 };
+  let settings: Settings = { language: null, delayMs: 1500, uiScale: AUTO };
   let listener: ((progress: Progress) => void) | null = null;
   let stopped = false;
   const log: string[] = [];
@@ -175,7 +175,8 @@ export function createMockApi(): Api {
       settings = {
         language: next.language,
         delayMs: Math.min(10_000, Math.max(500, next.delayMs)),
-        uiScale: UI_SCALES.some((scale) => scale === next.uiScale) ? next.uiScale : 100,
+        // Как в ядре: «Авто» или значение списка, остальное — «Авто».
+        uiScale: UI_SCALES.some((scale) => scale === next.uiScale) ? next.uiScale : AUTO,
       };
       return settings;
     },
@@ -191,9 +192,18 @@ export function createMockApi(): Api {
     async openTokenPage() {
       window.open('https://steamcommunity.com/pointssummary/ajaxgetasyncconfig', '_blank', 'noopener');
     },
-    // В обычном браузере зум окна не меняем: только запоминаем в журнале демо.
+    // В обычном браузере зум окна не меняем и в журнал не пишем: только запоминаем (атрибут data-demo-zoom).
     async setZoom(factor) {
-      log.push(`demo zoom: ${factor}`);
+      document.documentElement.dataset.demoZoom = String(factor);
+    },
+    // Зума здесь нет: размер страницы и есть размер окна.
+    async windowMetrics() {
+      return { width: window.innerWidth, height: window.innerHeight, monitorHeight: window.screen.height };
+    },
+    async onWindowChange(callback) {
+      const onResize = () => callback();
+      window.addEventListener('resize', onResize);
+      return () => window.removeEventListener('resize', onResize);
     },
   };
 }

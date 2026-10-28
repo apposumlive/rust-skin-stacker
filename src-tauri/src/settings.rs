@@ -4,14 +4,15 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 pub const DEFAULT_DELAY_MS: u32 = 1500;
 pub const MIN_DELAY_MS: u32 = 500;
 pub const MAX_DELAY_MS: u32 = 10_000;
 /// Допустимый масштаб окна, в процентах. Окно берёт тот же список (src/zoom.ts).
 pub const UI_SCALES: [u16; 4] = [100, 110, 125, 150];
-pub const DEFAULT_UI_SCALE: u16 = 100;
+/// «Авто»: масштаб подбирает окно по высоте экрана. По умолчанию.
+pub const UI_SCALE_AUTO: u16 = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -19,8 +20,19 @@ pub struct Settings {
     /// "en", "ru" или None — язык системы.
     pub language: Option<String>,
     pub delay_ms: u32,
-    /// Масштаб окна в процентах, одно из UI_SCALES.
+    /// Масштаб окна в процентах, одно из UI_SCALES, или UI_SCALE_AUTO.
+    #[serde(deserialize_with = "lenient_ui_scale")]
     pub ui_scale: u16,
+}
+
+/// Масштаб из файла: что угодно, кроме целого 0..=65535 (дробь, минус, строка), — «Авто».
+/// Испорченное поле не сбрасывает остальные настройки.
+fn lenient_ui_scale<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u16, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_u64()
+        .and_then(|n| u16::try_from(n).ok())
+        .unwrap_or(UI_SCALE_AUTO))
 }
 
 impl Default for Settings {
@@ -28,20 +40,20 @@ impl Default for Settings {
         Self {
             language: None,
             delay_ms: DEFAULT_DELAY_MS,
-            ui_scale: DEFAULT_UI_SCALE,
+            ui_scale: UI_SCALE_AUTO,
         }
     }
 }
 
 impl Settings {
-    /// Пауза в допустимых границах, неизвестный язык — как в системе, масштаб не из списка — 100.
+    /// Пауза в допустимых границах, неизвестный язык — как в системе, масштаб не из списка — «Авто».
     pub fn normalized(mut self) -> Self {
         self.delay_ms = self.delay_ms.clamp(MIN_DELAY_MS, MAX_DELAY_MS);
         if !matches!(self.language.as_deref(), Some("en" | "ru")) {
             self.language = None;
         }
         if !UI_SCALES.contains(&self.ui_scale) {
-            self.ui_scale = DEFAULT_UI_SCALE;
+            self.ui_scale = UI_SCALE_AUTO;
         }
         self
     }
@@ -98,7 +110,7 @@ mod tests {
             Settings {
                 language: None,
                 delay_ms: 3000,
-                ui_scale: 100
+                ui_scale: 0
             }
         );
     }
@@ -145,7 +157,7 @@ mod tests {
             Settings {
                 language: None,
                 delay_ms: MIN_DELAY_MS,
-                ui_scale: 100
+                ui_scale: 0
             }
         );
         let path = temp_file("clamp-high");
@@ -177,18 +189,18 @@ mod tests {
     fn json_uses_camel_case() {
         assert_eq!(
             serde_json::to_string(&Settings::default()).unwrap(),
-            r#"{"language":null,"delayMs":1500,"uiScale":100}"#
+            r#"{"language":null,"delayMs":1500,"uiScale":0}"#
         );
     }
 
     #[test]
-    fn ui_scale_defaults_to_100() {
-        assert_eq!(Settings::default().ui_scale, 100);
-        assert!(UI_SCALES.contains(&Settings::default().ui_scale));
+    fn ui_scale_defaults_to_auto() {
+        assert_eq!(Settings::default().ui_scale, 0);
+        assert_eq!(Settings::default().ui_scale, UI_SCALE_AUTO);
     }
 
     #[test]
-    fn normalized_keeps_known_ui_scale_and_resets_unknown() {
+    fn normalized_keeps_auto_and_known_ui_scale_and_resets_unknown_to_auto() {
         let scaled = |ui_scale| {
             Settings {
                 ui_scale,
@@ -197,16 +209,39 @@ mod tests {
             .normalized()
             .ui_scale
         };
-        assert_eq!(scaled(120), 100);
-        assert_eq!(scaled(0), 100);
-        assert_eq!(scaled(200), 100);
+        assert_eq!(scaled(0), 0);
+        assert_eq!(scaled(125), 125);
+        assert_eq!(scaled(120), 0);
+        assert_eq!(scaled(200), 0);
         for scale in UI_SCALES {
             assert_eq!(scaled(scale), scale);
         }
     }
 
     #[test]
-    fn old_file_without_ui_scale_gives_100() {
+    fn bad_ui_scale_in_the_file_gives_auto_and_keeps_the_rest() {
+        for (i, bad) in ["125.5", "-1", "70000", r#""x""#, "null", "[125]"]
+            .iter()
+            .enumerate()
+        {
+            let path = temp_file(&format!("bad-scale-{i}"));
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            let json = format!(r#"{{"language":"ru","delayMs":2000,"uiScale":{bad}}}"#);
+            fs::write(&path, json).unwrap();
+            assert_eq!(
+                load(&path),
+                Settings {
+                    language: Some("ru".into()),
+                    delay_ms: 2000,
+                    ui_scale: 0
+                },
+                "uiScale: {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn old_file_without_ui_scale_gives_auto() {
         let path = temp_file("no-scale");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, br#"{"language":"ru","delayMs":2000}"#).unwrap();
@@ -215,7 +250,7 @@ mod tests {
             Settings {
                 language: Some("ru".into()),
                 delay_ms: 2000,
-                ui_scale: 100
+                ui_scale: 0
             }
         );
     }

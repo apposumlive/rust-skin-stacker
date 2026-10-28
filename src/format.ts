@@ -4,7 +4,7 @@ import { getLang, t } from './i18n';
 export const ICON_HOSTS = [
   'https://community.fastly.steamstatic.com/economy/image/',
   'https://community.akamai.steamstatic.com/economy/image/',
-];
+] as const;
 
 /** Картинка предмета с CDN Steam — единственные внешние адреса, которые грузит окно. */
 export function iconUrl(hash: string, size: number, host = 0): string {

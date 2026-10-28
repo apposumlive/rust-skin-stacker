@@ -3,9 +3,17 @@
 
 import type { KeyLike } from './keys';
 
-/** Как UI_SCALES в src-tauri/src/settings.rs: масштаб не из списка ядро сбрасывает на 100. */
+/** Как UI_SCALES в src-tauri/src/settings.rs: масштаб не из списка (и не «Авто») ядро сбрасывает на «Авто». */
 export const UI_SCALES = [100, 110, 125, 150] as const;
 export type UiScale = (typeof UI_SCALES)[number];
+
+/** «Авто» в настройках: масштаб подбирается по высоте экрана. Как UI_SCALE_AUTO в ядре. */
+export const AUTO = 0;
+
+// Высота экрана в логических пикселях, с которой «Авто» берёт 125 % и 110 %:
+// экран 1440 px по высоте при масштабе Windows 100 % — 125 %.
+const AUTO_125_FROM = 1400;
+const AUTO_110_FROM = 1150;
 
 // Минимальный размер окна из tauri.conf.json: с масштабом окно в CSS-пикселях не должно стать меньше.
 export const MIN_WIDTH = 1024;
@@ -18,6 +26,18 @@ function nearestIndex(value: number): number {
     if (Math.abs(scale - value) < Math.abs(UI_SCALES[best] - value)) best = i;
   });
   return best;
+}
+
+/** Масштаб «Авто» для экрана этой высоты (логические пиксели); экран неизвестен (0) — 100. */
+export function autoScale(monitorLogicalHeight: number): UiScale {
+  if (monitorLogicalHeight >= AUTO_125_FROM) return 125;
+  if (monitorLogicalHeight >= AUTO_110_FROM) return 110;
+  return 100;
+}
+
+/** Масштаб, который выбран в настройках: «Авто» — по экрану, иначе значение (не из списка — ближайшее). */
+export function chosenScale(setting: number, monitorLogicalHeight: number): UiScale {
+  return setting === AUTO ? autoScale(monitorLogicalHeight) : UI_SCALES[nearestIndex(setting)];
 }
 
 /** Соседнее значение списка вверх или вниз; на краях остаётся крайним. Значение не из списка — сначала к ближайшему. */
@@ -39,7 +59,7 @@ export function effectiveScale(chosen: number, logicalWidth: number, logicalHeig
 }
 
 /**
- * Клавиши масштаба: 1 — крупнее, −1 — мельче, 0 — сброс к 100, null — не масштаб. По физической клавише (`code`),
+ * Клавиши масштаба: 1 — крупнее, −1 — мельче, 0 — снова «Авто», null — не масштаб. По физической клавише (`code`),
  * чтобы работало в любой раскладке. Shift не важен: Ctrl+Shift+= — это «Ctrl++».
  */
 export function zoomKey(e: KeyLike & { shiftKey?: boolean }): 1 | -1 | 0 | null {

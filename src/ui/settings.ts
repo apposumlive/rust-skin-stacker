@@ -1,4 +1,4 @@
-// Боковая панель настроек: язык, масштаб интерфейса и пауза между запросами.
+// Боковая панель настроек: язык, масштаб интерфейса («Авто» или 100–150 %) и пауза между запросами.
 
 import { saveSettings } from '../actions';
 import { asUiError } from '../api';
@@ -7,10 +7,11 @@ import { fmtPercent, fmtSeconds } from '../format';
 import { errorText, t } from '../i18n';
 import { setState, type State } from '../store';
 import type { Settings } from '../types';
-import { UI_SCALES } from '../zoom';
+import { AUTO, UI_SCALES, type UiScale } from '../zoom';
 import { canRestoreFocus, MAX_DELAY, MIN_DELAY, nextFocusIndex, snapDelay, STEP } from './settings-model';
 import type { Part } from './shell';
 import { focusMenuButton } from './topbar';
+import { currentAutoScale } from './zoom';
 
 const FOCUSABLE = 'button, select, input, textarea, [href], [tabindex]:not([tabindex="-1"])';
 
@@ -21,7 +22,8 @@ function focusables(root: HTMLElement): HTMLElement[] {
   );
 }
 
-export function createSettings(host: HTMLElement): Part {
+/** `autoNow` — сколько «Авто» даёт сейчас: это пишется в его пункте. */
+export function createSettings(host: HTMLElement, autoNow: () => UiScale = currentAutoScale): Part {
   let open = false;
   let restoreFocus: HTMLElement | null = null;
   let lastInside: HTMLElement | null = null;
@@ -108,6 +110,7 @@ export function createSettings(host: HTMLElement): Part {
     const scale = h(
       'select',
       { class: 'select', 'aria-label': t('settings.scale') },
+      h('option', { value: AUTO }, t('settings.scaleAuto', { value: fmtPercent(autoNow()) })),
       ...UI_SCALES.map((value) => h('option', { value }, fmtPercent(value))),
     );
     scale.value = String(uiScale);

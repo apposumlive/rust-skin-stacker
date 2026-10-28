@@ -276,10 +276,16 @@ export async function saveSettings(settings: Settings): Promise<void> {
 // Номер последнего сохранения масштаба с клавиш: ответ на более раннее нажатие в окно не попадает.
 let scaleSave = 0;
 
+/** Ошибка масштаба (не сохранился, не применился): на главном экране — плашкой, на экране входа — в `error`. */
+export function showScaleError(error: UiError): void {
+  if (getState().screen === 'main') showError(error);
+  else setState({ error });
+}
+
 /**
- * Масштаб с клавиш Ctrl+= / Ctrl+− / Ctrl+0: сохраняется вместе с остальными настройками, панель настроек
- * не закрывается, язык не перечитывается. Не отклоняется: ошибку на главном экране показывает плашкой,
- * на экране входа кладёт в `error`. Масштаб окна при этом не откатывается.
+ * Масштаб с клавиш Ctrl+= / Ctrl+− / Ctrl+0 (`0` — «Авто»): сохраняется вместе с остальными настройками,
+ * панель настроек не закрывается, язык не перечитывается. Не отклоняется: ошибку показывает `showScaleError`.
+ * Масштаб окна при этом не откатывается.
  */
 export async function setUiScale(uiScale: number): Promise<void> {
   const mine = ++scaleSave;
@@ -287,10 +293,7 @@ export async function setUiScale(uiScale: number): Promise<void> {
     const saved = await api.saveSettings({ ...getState().settings, uiScale });
     if (mine === scaleSave) setState({ settings: saved });
   } catch (e) {
-    if (mine !== scaleSave) return;
-    const error = asUiError(e);
-    if (getState().screen === 'main') showError(error);
-    else setState({ error });
+    if (mine === scaleSave) showScaleError(asUiError(e));
   }
 }
 

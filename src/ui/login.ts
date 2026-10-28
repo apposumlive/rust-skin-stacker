@@ -5,7 +5,7 @@ import { TOKEN_PAGE, api, asUiError } from '../api';
 import { h, icon } from '../dom';
 import { fmtTimeLeft } from '../format';
 import { errorText, getLang, t } from '../i18n';
-import { getState } from '../store';
+import { getState, subscribe } from '../store';
 import type { TokenInfo, UiError } from '../types';
 
 export interface Screen {
@@ -42,8 +42,15 @@ export function renderLogin(): Screen {
     status.textContent = text;
   };
   // Ошибка, оставшаяся с прошлого экрана (например, «Забыть токен» не дошёл до ядра).
-  const pending = getState().error;
-  if (pending) say(loginErrorText(pending), 'bad');
+  let shownError = getState().error;
+  if (shownError) say(loginErrorText(shownError), 'bad');
+  // Новая ошибка, пока экран открыт (масштаб не сохранился или не применился): сразу в строку состояния,
+  // экран не пересоздаётся, вставленный токен остаётся.
+  const unsubscribe = subscribe((state) => {
+    if (state.error === shownError) return;
+    shownError = state.error;
+    if (shownError) say(loginErrorText(shownError), 'bad');
+  });
 
   const switchLanguage = async () => {
     const error = await switchLang(getLang() === 'ru' ? 'en' : 'ru');
@@ -126,5 +133,11 @@ export function renderLogin(): Screen {
       h('p', { class: 'disclaimer' }, t('app.disclaimer')),
     ),
   );
-  return { el, destroy: () => window.clearTimeout(timer) };
+  return {
+    el,
+    destroy: () => {
+      window.clearTimeout(timer);
+      unsubscribe();
+    },
+  };
 }
