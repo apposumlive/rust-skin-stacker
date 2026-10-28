@@ -6,6 +6,7 @@
 import { clearScaleError, setUiScale, showScaleError } from '../actions';
 import { api, type WindowMetrics } from '../api';
 import { getState, subscribe } from '../store';
+import type { UiError } from '../types';
 import { AUTO, autoScale, chosenScale, effectiveScale, stepScale, zoomKey, type UiScale } from '../zoom';
 
 /** Пересчёт после изменения окна: пока окно тянут мышью, событий много. */
@@ -37,6 +38,9 @@ export function startZoom(): () => void {
   let stopped = false;
   // Ошибку размера окна или событий окна уже показали.
   let reported = false;
+  // Показанные ошибки: отказ ядра сменить зум и «размер окна не прочитался». Каждую убирает только её же успех.
+  let refusal: UiError | null = null;
+  let unreadable: UiError | null = null;
   let unlisten: (() => void) | null = null;
 
   const apply = () => {
@@ -48,17 +52,20 @@ export function startZoom(): () => void {
 
   const zoomTo = async (next: UiScale) => {
     zooming = true;
-    const before = getState().error;
     try {
       await api.setZoom(next / 100);
       applied = next;
       refused = null;
-      // Зум сменился: прежняя ошибка масштаба больше не верна.
-      if (!stopped) clearScaleError(before);
+      // Зум сменился: прежний отказ больше не верен.
+      if (!stopped) clearScaleError(refusal);
+      refusal = null;
     } catch {
       // Зум не сменился: остаётся прежний. Журнал — в ядре, окну записать в него нечего: показываем ошибку.
       refused = next;
-      if (!stopped) showScaleError({ code: 'zoomFailed', status: null });
+      if (!stopped) {
+        refusal = { code: 'zoomFailed', status: null };
+        showScaleError(refusal);
+      }
     } finally {
       zooming = false;
     }
@@ -67,10 +74,12 @@ export function startZoom(): () => void {
   };
 
   // Размер окна не прочитался или события окна не слушаются: говорим один раз, иначе масштаб молча не работает.
-  const failed = () => {
-    if (stopped || reported) return;
+  const failed = (): UiError | null => {
+    if (stopped || reported) return null;
     reported = true;
-    showScaleError({ code: 'zoomFailed', status: null });
+    const error: UiError = { code: 'zoomFailed', status: null };
+    showScaleError(error);
+    return error;
   };
 
   // Ответ на устаревший замер отбрасывается. Размер не прочитался — остаётся прежний; нет и прежнего — ошибка.
@@ -80,12 +89,15 @@ export function startZoom(): () => void {
     try {
       next = await api.windowMetrics();
     } catch {
-      if (mine === reading && !metrics) failed();
+      if (mine === reading && !metrics) unreadable = failed() ?? unreadable;
       return;
     }
     if (mine !== reading || stopped) return;
     // Свёрнутое окно (Windows) отдаёт 0×0: такой размер не берём, остаётся прежний.
     if (next.width <= 0 || next.height <= 0) return;
+    // Размер наконец прочитался: ошибка о нём больше не верна.
+    clearScaleError(unreadable);
+    unreadable = null;
     metrics = next;
     monitorHeight = next.monitorHeight;
     apply();

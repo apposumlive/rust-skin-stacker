@@ -613,6 +613,37 @@ describe('window size errors', () => {
     expect(errors).toEqual([{ code: 'zoomFailed', status: null }]);
   });
 
+  it('keeps the window-events error after a later zoom and a later save worked', async () => {
+    prepare(100, 1800, 1200);
+    api.onWindowChange = async () => {
+      throw new Error('denied');
+    };
+    stop = startZoom();
+    await flush();
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+    await core.answer();
+    press('Equal');
+    await core.answer();
+    await flush();
+    expect(core.zooms).toEqual([1, 1.1]);
+    expect(saved()).toEqual([110]);
+    // Окно по-прежнему не сообщает о своих изменениях: ошибка верна, удачный зум и сохранение её не убирают.
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+  });
+
+  it('clears the size error once the window size reads', async () => {
+    prepare(125, 1600, 1000);
+    api.windowMetrics.mockRejectedValueOnce(new Error('busy'));
+    stop = startZoom();
+    await flush();
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+    expect(core.zooms).toEqual([]);
+    core.resize(1600, 1000);
+    await afterDelay();
+    expect(getState().error).toBeNull();
+    expect(core.zooms).toEqual([1.25]);
+  });
+
   it('shows one error when both the size and the window events fail', async () => {
     prepare(125, 1600, 1000);
     api.windowMetrics.mockRejectedValue(new Error('denied'));
