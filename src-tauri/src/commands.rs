@@ -833,13 +833,15 @@ mod tests {
             .save_settings(Settings {
                 language: Some("ru".into()),
                 delay_ms: 50,
+                ..Settings::default()
             })
             .unwrap();
         assert_eq!(
             saved,
             Settings {
                 language: Some("ru".into()),
-                delay_ms: 500
+                delay_ms: 500,
+                ..Settings::default()
             }
         );
         assert_eq!(state.settings(), saved);
@@ -854,6 +856,7 @@ mod tests {
             Settings {
                 language: None,
                 delay_ms: 60_000,
+                ..Settings::default()
             },
         );
         assert_eq!(state.settings().delay_ms, MAX_DELAY_MS);
@@ -862,6 +865,7 @@ mod tests {
             Settings {
                 language: None,
                 delay_ms: 1,
+                ..Settings::default()
             },
         );
         assert_eq!(state.settings().delay_ms, MIN_DELAY_MS);
@@ -1422,6 +1426,7 @@ mod tests {
             Settings {
                 language: None,
                 delay_ms: 700,
+                ..Settings::default()
             },
         )
         .await;
@@ -1449,6 +1454,7 @@ mod tests {
             Settings {
                 language: None,
                 delay_ms: 700,
+                ..Settings::default()
             },
         )
         .await;
@@ -1459,6 +1465,7 @@ mod tests {
                         .save_settings(Settings {
                             language: None,
                             delay_ms: 2000,
+                            ..Settings::default()
                         })
                         .unwrap();
                 }

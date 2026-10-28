@@ -10,8 +10,8 @@
 /* Заголовок получает фокус программно (после смены вида): кольцо на нём не нужно. */
 .panel h2[tabindex='-1']:focus { outline: none; }
 .wide { width: 100%; }
-.foot { margin-top: auto; padding-top: 14px; font-size: 12px; color: var(--text-2); line-height: 1.5; }
-.note { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; color: var(--warn); }
+.foot { margin-top: auto; padding-top: 14px; font-size: 13px; color: var(--text-2); line-height: 1.5; }
+.note { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; line-height: 1.5; color: var(--warn); }
 .note .ti { font-size: 16px; flex: none; margin-top: 1px; }
 .note.ok { color: var(--ok); }
 .note.muted { color: var(--text-2); }
@@ -49,7 +49,7 @@
 }
 .amt .v::-webkit-inner-spin-button, .amt .v::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .sec .range { margin: 18px 0 6px; }
-.ticks { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-2); }
+.ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-2); }
 .preview { margin-top: 12px; font-size: 13px; color: var(--text-2); min-height: 38px; }
 /* «Станет:» и стоимость приглушены, раскладка — главное в строке. */
 .preview b { color: var(--text); font-weight: 700; }
@@ -66,7 +66,7 @@
 
 /* Несколько */
 .thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.thumb { aspect-ratio: 1; border-radius: 8px; background: var(--img); display: grid; place-items: center; font-size: 12px; font-weight: 800; color: var(--text-2); }
+.thumb { aspect-ratio: 1; border-radius: 8px; background: var(--img); display: grid; place-items: center; font-size: 13px; font-weight: 800; color: var(--text-2); }
 .thumb img { width: 80%; height: 80%; object-fit: contain; }
 .multi .plan-h { margin-top: 14px; }
 .multi .link { margin-top: 12px; align-self: flex-start; }
@@ -83,9 +83,9 @@
 .qimg img { width: 28px; height: 28px; object-fit: contain; }
 .qimg .ti { font-size: 16px; color: var(--text-3); }
 .qn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.queue .r { margin-left: auto; color: var(--text-2); font-size: 12px; white-space: nowrap; }
+.queue .r { margin-left: auto; color: var(--text-2); font-size: 13px; white-space: nowrap; }
 .queue .more { color: var(--text-2); }
-.check { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--text-2); line-height: 1.5; }
+.check { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text-2); line-height: 1.5; }
 .check .ti { color: var(--ok); font-size: 16px; flex: none; }
 .run { height: 50px; width: 100%; }
 .cancel { height: 40px; width: 100%; }

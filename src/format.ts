@@ -15,6 +15,11 @@ export function fmtInt(n: number): string {
   return new Intl.NumberFormat(getLang()).format(n);
 }
 
+/** Масштаб в процентах: «125%», по-русски «125 %». */
+export function fmtPercent(percent: number): string {
+  return new Intl.NumberFormat(getLang(), { style: 'percent' }).format(percent / 100);
+}
+
 /** Миллисекунды → секунды с одним знаком: «1,5». */
 export function fmtSeconds(ms: number): string {
   return new Intl.NumberFormat(getLang(), { maximumFractionDigits: 1 }).format(ms / 1000);

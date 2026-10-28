@@ -84,7 +84,7 @@ describe('focus after Run', () => {
   const stateOf = (panel: Panel): State => ({
     screen: 'main',
     lang: 'en',
-    settings: { language: null, delayMs: 1500 },
+    settings: { language: null, delayMs: 1500, uiScale: 100 },
     token: null,
     inventory,
     loading: false,

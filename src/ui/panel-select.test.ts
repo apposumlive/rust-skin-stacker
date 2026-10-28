@@ -11,7 +11,7 @@ function rec(assetid: string, amount: number): InvRecord {
 }
 
 const skinOf = (amount: number): Skin => ({ key: 'A', name: 'Skin A', icon: null, category: null, total: amount, records: [rec('1001', amount)] });
-const state = { settings: { language: null, delayMs: 1500 } } as State;
+const state = { settings: { language: null, delayMs: 1500, uiScale: 100 } } as State;
 
 /** Ответ ядра на «Отделить N» для стопки из 8. */
 function planFor(op: Operation): Plan {

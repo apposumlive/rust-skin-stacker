@@ -14,7 +14,7 @@ function rec(assetid: string, amount: number): InvRecord {
 
 const skin: Skin = { key: 'A', name: 'Skin A', icon: null, category: null, total: 8, records: [rec('1001', 8)] };
 const inventory: Inventory = { skins: [skin], unreadable: [] };
-const state = { inventory, settings: { language: null, delayMs: 1500 } } as State;
+const state = { inventory, settings: { language: null, delayMs: 1500, uiScale: 100 } } as State;
 
 const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [{ key: 'A', amount: 8, requests: 4 }], more: 0, after: [] };
 const empty: Plan = { ...plan, requests: 0, stacks: 0, queue: [] };

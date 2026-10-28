@@ -4,6 +4,7 @@
 
 import type { Api } from '../api';
 import type { Inventory, InvRecord, Operation, Plan, Progress, Settings, Skin, SkinAfter } from '../types';
+import { UI_SCALES } from '../zoom';
 import items from './demo-items.json';
 
 /** Раскладка как в docs/design/mockup/data.js: [стопки, сколько по одному]. */
@@ -125,7 +126,7 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 
 export function createMockApi(): Api {
   let inventory = demoInventory();
-  let settings: Settings = { language: null, delayMs: 1500 };
+  let settings: Settings = { language: null, delayMs: 1500, uiScale: 100 };
   let listener: ((progress: Progress) => void) | null = null;
   let stopped = false;
   const log: string[] = [];
@@ -171,7 +172,11 @@ export function createMockApi(): Api {
       return settings;
     },
     async saveSettings(next) {
-      settings = { language: next.language, delayMs: Math.min(10_000, Math.max(500, next.delayMs)) };
+      settings = {
+        language: next.language,
+        delayMs: Math.min(10_000, Math.max(500, next.delayMs)),
+        uiScale: UI_SCALES.some((scale) => scale === next.uiScale) ? next.uiScale : 100,
+      };
       return settings;
     },
     async journal() {
@@ -185,6 +190,10 @@ export function createMockApi(): Api {
     },
     async openTokenPage() {
       window.open('https://steamcommunity.com/pointssummary/ajaxgetasyncconfig', '_blank', 'noopener');
+    },
+    // В обычном браузере зум окна не меняем: только запоминаем в журнале демо.
+    async setZoom(factor) {
+      log.push(`demo zoom: ${factor}`);
     },
   };
 }

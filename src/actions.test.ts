@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { adoptInventory, forgetToken, loadInventory, runPlan, saveSettings, showPlan, signIn, stopRun, switchLang } from './actions';
+import { adoptInventory, forgetToken, loadInventory, runPlan, saveSettings, setUiScale, showPlan, signIn, stopRun, switchLang } from './actions';
 import { useApi, type Api } from './api';
 import { setLang } from './i18n';
 import { visibleSkins } from './model';
@@ -28,7 +28,7 @@ const invIn = (...pairs: Array<[key: string, category: string]>): Inventory => (
 const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] };
 const newPlan: Plan = { ...plan, requests: 2 };
 const outcome = (reason: RunOutcome['reason'] = 'finished'): RunOutcome => ({ reason, done: 4, errors: 0, total: 4 });
-const settings: Settings = { language: null, delayMs: 1500 };
+const settings: Settings = { language: null, delayMs: 1500, uiScale: 100 };
 
 const finished = (reason: RunOutcome['reason'] = 'finished', inventory: Inventory | null = null): StartResult => ({
   kind: 'finished',
@@ -64,6 +64,7 @@ function fakeApi(over: Partial<Api> = {}): Api {
     journal: async () => '',
     onProgress: async () => () => {},
     openTokenPage: async () => {},
+    setZoom: async () => {},
     ...over,
   };
 }
@@ -615,7 +616,7 @@ describe('switchLang and saveSettings', () => {
     const save = vi.fn(async (next: Settings) => next);
     useApi(fakeApi({ saveSettings: save }));
     await expect(switchLang('ru')).resolves.toBeNull();
-    expect(save).toHaveBeenCalledWith({ language: 'ru', delayMs: 1500 });
+    expect(save).toHaveBeenCalledWith({ language: 'ru', delayMs: 1500, uiScale: 100 });
     expect(getState().lang).toBe('ru');
     expect(getState().settings.language).toBe('ru');
   });
@@ -639,8 +640,87 @@ describe('switchLang and saveSettings', () => {
 
   it('saveSettings still rejects for its callers', async () => {
     useApi(fakeApi({ saveSettings: saveFails }));
-    await expect(saveSettings({ language: 'ru', delayMs: 1500 })).rejects.toEqual({ code: 'settingsNotSaved' });
+    await expect(saveSettings({ language: 'ru', delayMs: 1500, uiScale: 100 })).rejects.toEqual({ code: 'settingsNotSaved' });
     expect(getState().lang).toBe('en');
+  });
+
+  it('saveSettings passes the scale on with the rest', async () => {
+    const save = vi.fn(async (next: Settings) => next);
+    useApi(fakeApi({ saveSettings: save }));
+    await saveSettings({ language: null, delayMs: 1500, uiScale: 125 });
+    expect(save).toHaveBeenCalledWith({ language: null, delayMs: 1500, uiScale: 125 });
+    expect(getState().settings.uiScale).toBe(125);
+  });
+});
+
+describe('setUiScale', () => {
+  const saveFails = () => Promise.reject({ code: 'settingsNotSaved' });
+
+  it('saves the scale with the other settings and keeps the settings panel open', async () => {
+    const save = vi.fn(async (next: Settings) => next);
+    const load = vi.fn(async () => inv('A'));
+    useApi(fakeApi({ saveSettings: save, loadInventory: load }));
+    setState({ settings: { language: 'en', delayMs: 3000, uiScale: 100 }, settingsOpen: true });
+    await setUiScale(125);
+    expect(save).toHaveBeenCalledWith({ language: 'en', delayMs: 3000, uiScale: 125 });
+    const s = getState();
+    expect(s.settings).toEqual({ language: 'en', delayMs: 3000, uiScale: 125 });
+    expect(s.settingsOpen).toBe(true);
+    expect(s.lang).toBe('en');
+    await tick();
+    // Язык не менялся: инвентарь не перечитывается.
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('takes the settings as the core saved them', async () => {
+    useApi(fakeApi({ saveSettings: async (next) => ({ ...next, uiScale: 100 }) }));
+    await setUiScale(120);
+    expect(getState().settings.uiScale).toBe(100);
+  });
+
+  it('shows the error on the main screen and keeps the old settings', async () => {
+    useApi(fakeApi({ saveSettings: saveFails }));
+    setState({ settingsOpen: true });
+    await expect(setUiScale(150)).resolves.toBeUndefined();
+    const s = getState();
+    expect(s.error).toEqual({ code: 'settingsNotSaved', status: null });
+    expect(s.settings).toBe(settings);
+    expect(s.settingsOpen).toBe(true);
+  });
+
+  it('puts the error into the state on the login screen', async () => {
+    freshState({ screen: 'login', token: null, inventory: null });
+    useApi(fakeApi({ saveSettings: saveFails }));
+    await setUiScale(150);
+    expect(getState().error).toEqual({ code: 'settingsNotSaved', status: null });
+    expect(getState().settings).toBe(settings);
+  });
+
+  it('keeps the last pressed scale when answers to quick presses come late', async () => {
+    const answers = [deferred<Settings>(), deferred<Settings>()];
+    let call = 0;
+    useApi(fakeApi({ saveSettings: () => answers[call++].promise }));
+    const first = setUiScale(110);
+    const second = setUiScale(125);
+    answers[1].resolve({ ...settings, uiScale: 125 });
+    await second;
+    answers[0].resolve({ ...settings, uiScale: 110 });
+    await first;
+    expect(getState().settings.uiScale).toBe(125);
+  });
+
+  it('does not show the error of a press that a later one replaced', async () => {
+    const answers = [deferred<Settings>(), deferred<Settings>()];
+    let call = 0;
+    useApi(fakeApi({ saveSettings: () => answers[call++].promise }));
+    const first = setUiScale(110);
+    const second = setUiScale(125);
+    answers[1].resolve({ ...settings, uiScale: 125 });
+    await second;
+    answers[0].reject({ code: 'settingsNotSaved' });
+    await first;
+    expect(getState().error).toBeNull();
+    expect(getState().settings.uiScale).toBe(125);
   });
 });
 
@@ -793,7 +873,7 @@ describe('language change', () => {
     const load = vi.fn(async () => inv('A', 'B'));
     useApi(fakeApi({ loadInventory: load }));
     setState({ panel: { kind: 'plan', plan, changed: false } });
-    await saveSettings({ language: 'ru', delayMs: 1500 });
+    await saveSettings({ language: 'ru', delayMs: 1500, uiScale: 100 });
     await tick();
     expect(load).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledWith('ru');
@@ -804,7 +884,7 @@ describe('language change', () => {
     const preview = vi.fn(async () => newPlan);
     useApi(fakeApi({ loadInventory: async () => inv('A', 'B'), preview }));
     setState({ panel: { kind: 'plan', plan, changed: false } });
-    await saveSettings({ language: 'ru', delayMs: 1500 });
+    await saveSettings({ language: 'ru', delayMs: 1500, uiScale: 100 });
     await tick();
     await tick();
     expect(preview).toHaveBeenCalledWith(plan.operation);
@@ -814,7 +894,7 @@ describe('language change', () => {
   it('does not re-read when only the pause changed', async () => {
     const load = vi.fn(async () => inv('A'));
     useApi(fakeApi({ loadInventory: load }));
-    await saveSettings({ language: 'en', delayMs: 3000 });
+    await saveSettings({ language: 'en', delayMs: 3000, uiScale: 100 });
     await tick();
     expect(load).not.toHaveBeenCalled();
   });

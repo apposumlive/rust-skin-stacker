@@ -101,6 +101,8 @@ export type StartResult =
 export interface Settings {
   language: 'en' | 'ru' | null;
   delayMs: number;
+  /** Масштаб окна в процентах, одно из UI_SCALES (src/zoom.ts). */
+  uiScale: number;
 }
 
 export interface UiError {

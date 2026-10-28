@@ -108,7 +108,7 @@ describe('layout', () => {
 
   it('keeps the long «Непередаваемые» label inside the filter column: smaller type, the count may wrap below', () => {
     const long = rule(mainCss, '.opt.long');
-    expect(parseFloat(prop(long, 'font-size'))).toBeLessThanOrEqual(12);
+    expect(parseFloat(prop(long, 'font-size'))).toBeLessThan(parseFloat(prop(rule(mainCss, '.opt'), 'font-size')));
     expect(prop(long, 'flex-wrap')).toBe('wrap');
   });
 
