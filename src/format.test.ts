@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from './i18n';
-import { estimateSeconds, fmtDuration, fmtInt, fmtSeconds, fmtTimeLeft, ICON_HOSTS, iconUrl, remainingSeconds } from './format';
+import { estimateSeconds, fmtDuration, fmtInt, fmtPercent, fmtSeconds, fmtTimeLeft, ICON_HOSTS, iconUrl, remainingSeconds } from './format';
 
 describe('format', () => {
   beforeEach(() => setLang('ru'));
@@ -53,6 +53,13 @@ describe('format', () => {
     setLang('en');
     expect(fmtSeconds(1500)).toBe('1.5');
     expect(fmtSeconds(2000)).toBe('2');
+  });
+
+  it('formats the interface scale as a percent of the language', () => {
+    // В русском между числом и знаком процента — неразрывный пробел.
+    expect([100, 110, 125, 150].map(fmtPercent)).toEqual(['100\u00a0%', '110\u00a0%', '125\u00a0%', '150\u00a0%']);
+    setLang('en');
+    expect([100, 110, 125, 150].map(fmtPercent)).toEqual(['100%', '110%', '125%', '150%']);
   });
 
   it('counts the seconds left until the end of a wait', () => {

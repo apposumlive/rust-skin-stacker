@@ -273,6 +273,27 @@ export async function saveSettings(settings: Settings): Promise<void> {
   if (relang) rereadForLanguage();
 }
 
+// Номер последнего сохранения масштаба с клавиш: ответ на более раннее нажатие в окно не попадает.
+let scaleSave = 0;
+
+/**
+ * Масштаб с клавиш Ctrl+= / Ctrl+− / Ctrl+0: сохраняется вместе с остальными настройками, панель настроек
+ * не закрывается, язык не перечитывается. Не отклоняется: ошибку на главном экране показывает плашкой,
+ * на экране входа кладёт в `error`. Масштаб окна при этом не откатывается.
+ */
+export async function setUiScale(uiScale: number): Promise<void> {
+  const mine = ++scaleSave;
+  try {
+    const saved = await api.saveSettings({ ...getState().settings, uiScale });
+    if (mine === scaleSave) setState({ settings: saved });
+  } catch (e) {
+    if (mine !== scaleSave) return;
+    const error = asUiError(e);
+    if (getState().screen === 'main') showError(error);
+    else setState({ error });
+  }
+}
+
 /** Не отклоняется: ошибку возвращает (язык не меняется), на главном экране ещё и показывает плашкой. */
 export async function switchLang(lang: Lang): Promise<UiError | null> {
   try {

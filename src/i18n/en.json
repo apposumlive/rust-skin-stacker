@@ -192,6 +192,8 @@
   "settings.title": "Settings",
   "settings.language": "Language",
   "settings.system": "As in the system",
+  "settings.scale": "Interface scale",
+  "settings.scaleHint": "Ctrl\u00a0+\u00a0= and Ctrl\u00a0+\u00a0− change the scale, Ctrl\u00a0+\u00a00\u00a0resets it to 100%. In a small window the scale goes down on its own so everything fits.",
   "settings.delay": "Pause between requests",
   "settings.delayHint": "A shorter pause is faster, but Steam asks to wait more often. Default is 1.5\u00a0s.",
   "settings.delayValue": "{value}\u00a0s",

@@ -210,6 +210,8 @@
   "settings.title": "Настройки",
   "settings.language": "Язык",
   "settings.system": "Как в системе",
+  "settings.scale": "Масштаб интерфейса",
+  "settings.scaleHint": "Ctrl\u00a0+\u00a0= и Ctrl\u00a0+\u00a0− меняют масштаб, Ctrl\u00a0+\u00a00\u00a0возвращает 100%. Если окно маленькое, масштаб уменьшается сам, чтобы всё поместилось.",
   "settings.delay": "Пауза между запросами",
   "settings.delayHint": "Чем пауза короче, тем быстрее идёт операция, но тем чаще Steam просит подождать. По умолчанию 1,5\u00a0с.",
   "settings.delayValue": "{value}\u00a0с",

@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: app events and opening the Steam token page in the browser",
+  "description": "Main window: app events, opening the Steam token page in the browser and the interface scale (webview zoom)",
   "windows": ["main"],
   "permissions": [
     "core:event:default",
+    "core:webview:allow-set-webview-zoom",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "https://steamcommunity.com/pointssummary/ajaxgetasyncconfig" }]

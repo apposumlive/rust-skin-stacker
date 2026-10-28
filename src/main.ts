@@ -19,6 +19,7 @@ import { getState, initState, initialFilter, subscribe, type State } from './sto
 import { renderLogin, type Screen } from './ui/login';
 import { mountMain } from './ui/shell';
 import { focusMenuButton } from './ui/topbar';
+import { startZoom } from './ui/zoom';
 
 async function boot(): Promise<void> {
   // В релизе F5 и Ctrl+R не перезагружают окно: ядро при перезагрузке забывает токен и останавливает запуск.
@@ -56,6 +57,8 @@ async function boot(): Promise<void> {
     menuOpen: false,
     settingsOpen: false,
   });
+  // Масштаб интерфейса из настроек и клавиши Ctrl+= / Ctrl+− / Ctrl+0 — на любом экране.
+  startZoom();
 
   const root = document.getElementById('app')!;
   let screen: Screen | null = null;

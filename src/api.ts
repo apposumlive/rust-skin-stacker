@@ -2,6 +2,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Lang } from './i18n';
 import type { Inventory, Operation, Plan, Progress, Settings, StartResult, TokenInfo, UiError } from './types';
@@ -20,6 +21,8 @@ export interface Api {
   journal(): Promise<string>;
   onProgress(callback: (progress: Progress) => void): Promise<() => void>;
   openTokenPage(): Promise<void>;
+  /** Зум всего окна: 1 — 100 %, 1.25 — 125 %. */
+  setZoom(factor: number): Promise<void>;
 }
 
 const tauriApi: Api = {
@@ -34,6 +37,7 @@ const tauriApi: Api = {
   journal: () => invoke<string>('journal'),
   onProgress: (callback) => listen<Progress>('run-progress', (event) => callback(event.payload)),
   openTokenPage: () => openUrl(TOKEN_PAGE),
+  setZoom: (factor) => getCurrentWebview().setZoom(factor),
 };
 
 export let api: Api = tauriApi;

@@ -127,12 +127,18 @@ export class FakeEl {
   }
 }
 
+/** Обработчики событий документа (`keydown`, `focusin` панели настроек). */
+const documentEvents = new FakeEl('#document');
+
 export const fakeDocument = {
   createElement: (tag: string) => new FakeEl(tag),
   createTextNode: (data: string) => new FakeText(data),
   body: new FakeEl('body'),
   /** Куда последним перевели фокус (`focus()`); тест сбрасывает сам. */
   activeElement: null as FakeEl | null,
+  listeners: documentEvents.listeners,
+  addEventListener: (type: string, handler: Handler) => documentEvents.addEventListener(type, handler),
+  removeEventListener: (type: string, handler: Handler) => documentEvents.removeEventListener(type, handler),
 };
 
 /** Все элементы дерева (сам корень первым), подходящие под условие. */

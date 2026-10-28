@@ -1,12 +1,13 @@
-// Боковая панель настроек: язык и пауза между запросами.
+// Боковая панель настроек: язык, масштаб интерфейса и пауза между запросами.
 
 import { saveSettings } from '../actions';
 import { asUiError } from '../api';
 import { h, icon } from '../dom';
-import { fmtSeconds } from '../format';
+import { fmtPercent, fmtSeconds } from '../format';
 import { errorText, t } from '../i18n';
 import { setState, type State } from '../store';
 import type { Settings } from '../types';
+import { UI_SCALES } from '../zoom';
 import { canRestoreFocus, MAX_DELAY, MIN_DELAY, nextFocusIndex, snapDelay, STEP } from './settings-model';
 import type { Part } from './shell';
 import { focusMenuButton } from './topbar';
@@ -24,6 +25,8 @@ export function createSettings(host: HTMLElement): Part {
   let open = false;
   let restoreFocus: HTMLElement | null = null;
   let lastInside: HTMLElement | null = null;
+  // Масштаб в открытой панели следует за клавишами Ctrl+= / Ctrl+− / Ctrl+0 (они сохраняют его сразу).
+  let followScale: ((scale: number) => void) | null = null;
   const close = () => setState({ settingsOpen: false });
   const drawerEl = () => host.querySelector<HTMLElement>('.drawer');
 
@@ -100,6 +103,25 @@ export function createSettings(host: HTMLElement): Part {
       language = select.value === 'en' || select.value === 'ru' ? select.value : null;
     });
 
+    let uiScale = state.settings.uiScale;
+    let savedScale = uiScale;
+    const scale = h(
+      'select',
+      { class: 'select', 'aria-label': t('settings.scale') },
+      ...UI_SCALES.map((value) => h('option', { value }, fmtPercent(value))),
+    );
+    scale.value = String(uiScale);
+    scale.addEventListener('change', () => {
+      uiScale = Number(scale.value);
+    });
+    // Клавиши сохранили другой масштаб, пока панель открыта: поле показывает его, и «Сохранить» его не откатит.
+    followScale = (next) => {
+      if (next === savedScale) return;
+      savedScale = next;
+      uiScale = next;
+      scale.value = String(next);
+    };
+
     const error = h('p', { class: 'field-error', role: 'alert' });
     const saveButton = h('button', { class: 'btn pri', type: 'button', onclick: () => void save() }, t('settings.save'));
     let saving = false;
@@ -108,7 +130,7 @@ export function createSettings(host: HTMLElement): Part {
       saving = true;
       saveButton.disabled = true;
       error.textContent = '';
-      const next: Settings = { language, delayMs: delay };
+      const next: Settings = { language, delayMs: delay, uiScale };
       try {
         await saveSettings(next);
       } catch (e) {
@@ -134,6 +156,13 @@ export function createSettings(host: HTMLElement): Part {
       h(
         'div',
         { class: 'field' },
+        h('span', { class: 'fh' }, t('settings.scale')),
+        scale,
+        h('p', { class: 'muted small' }, t('settings.scaleHint')),
+      ),
+      h(
+        'div',
+        { class: 'field' },
         h('div', { class: 'field-row' }, h('span', { class: 'fh' }, t('settings.delay')), value),
         range,
         h('p', { class: 'muted small' }, t('settings.delayHint')),
@@ -149,7 +178,10 @@ export function createSettings(host: HTMLElement): Part {
 
   return {
     update(state) {
-      if (state.settingsOpen === open) return;
+      if (state.settingsOpen === open) {
+        if (open) followScale?.(state.settings.uiScale);
+        return;
+      }
       open = state.settingsOpen;
       if (open) {
         restoreFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -160,6 +192,7 @@ export function createSettings(host: HTMLElement): Part {
         // Фон снова доступен до возврата фокуса: иначе он не дойдёт до кнопки меню.
         setBackgroundInert(false);
         host.replaceChildren();
+        followScale = null;
         if (canRestoreFocus(restoreFocus, document.body)) restoreFocus?.focus();
         else focusMenuButton();
         restoreFocus = null;
