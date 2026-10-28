@@ -35,6 +35,8 @@ export function startZoom(): () => void {
   let reading = 0;
   let timer = 0;
   let stopped = false;
+  // Ошибку размера окна или событий окна уже показали.
+  let reported = false;
   let unlisten: (() => void) | null = null;
 
   const apply = () => {
@@ -61,17 +63,28 @@ export function startZoom(): () => void {
     apply();
   };
 
-  // Ответ на устаревший замер отбрасывается. Размер не прочитался — остаётся прежний.
+  // Размер окна не прочитался или события окна не слушаются: говорим один раз, иначе масштаб молча не работает.
+  const failed = () => {
+    if (stopped || reported) return;
+    reported = true;
+    showScaleError({ code: 'zoomFailed', status: null });
+  };
+
+  // Ответ на устаревший замер отбрасывается. Размер не прочитался — остаётся прежний; нет и прежнего — ошибка.
   const measure = async () => {
     const mine = ++reading;
+    let next: WindowMetrics;
     try {
-      const next = await api.windowMetrics();
-      if (mine !== reading || stopped) return;
-      metrics = next;
-      monitorHeight = next.monitorHeight;
+      next = await api.windowMetrics();
     } catch {
+      if (mine === reading && !metrics) failed();
       return;
     }
+    if (mine !== reading || stopped) return;
+    // Свёрнутое окно (Windows) отдаёт 0×0: такой размер не берём, остаётся прежний.
+    if (next.width <= 0 || next.height <= 0) return;
+    metrics = next;
+    monitorHeight = next.monitorHeight;
     apply();
   };
 
@@ -86,7 +99,8 @@ export function startZoom(): () => void {
       if (stopped) off();
       else unlisten = off;
     } catch {
-      // Без событий окна масштаб пересчитывается по клавишам и настройкам.
+      // Без событий окна масштаб пересчитывается только по клавишам и настройкам.
+      failed();
     }
   };
 

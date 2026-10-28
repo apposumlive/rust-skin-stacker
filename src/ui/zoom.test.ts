@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { useApi, type Api, type WindowMetrics } from '../api';
 import { defaultFilter } from '../model';
-import { getState, initState, setState, type State } from '../store';
+import { getState, initState, setState, subscribe, type State } from '../store';
 import type { Settings } from '../types';
 import { AUTO } from '../zoom';
 import { currentAutoScale, RESIZE_DELAY, startZoom } from './zoom';
@@ -118,17 +118,36 @@ let core: ReturnType<typeof fakeCore>['core'];
 let api: ReturnType<typeof fakeCore>['api'];
 let save: Mock<Api['saveSettings']>;
 let stop: (() => void) | null = null;
+let cleanups: Array<() => void> = [];
 
 /** Окно `width`×`height` на экране высотой `monitorHeight` (логические пиксели), масштаб `uiScale` в настройках. */
-async function start(uiScale: number, width: number, height: number, monitorHeight = 1080, over: Partial<State> = {}) {
+function prepare(uiScale: number, width: number, height: number, monitorHeight = 1080, over: Partial<State> = {}) {
   stop?.();
   win = fakeWindow();
   vi.stubGlobal('window', win);
   ({ core, api } = fakeCore(width, height, monitorHeight));
   useApi(api);
   initState(stateOf({ settings: { ...settings, uiScale }, ...over }));
+}
+
+/** То же, что `prepare`, и сразу запуск. */
+async function start(uiScale: number, width: number, height: number, monitorHeight = 1080, over: Partial<State> = {}) {
+  prepare(uiScale, width, height, monitorHeight, over);
   stop = startZoom();
   await flush();
+}
+
+/** Каждая новая ошибка в состоянии окна, по порядку. Подписка снимается после теста. */
+function watchErrors(): unknown[] {
+  const errors: unknown[] = [];
+  let last = getState().error;
+  cleanups.push(
+    subscribe((state) => {
+      if (state.error && state.error !== last) errors.push(state.error);
+      last = state.error;
+    }),
+  );
+  return errors;
 }
 
 /** Событие окна и пауза пересчёта. */
@@ -147,6 +166,8 @@ beforeEach(() => {
 afterEach(() => {
   stop?.();
   stop = null;
+  for (const off of cleanups) off();
+  cleanups = [];
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -262,6 +283,42 @@ describe('zoom on window change', () => {
     answers[0]({ width: 1500, height: 900, monitorHeight: 1080 });
     await flush();
     expect(core.zooms).toEqual([1.5]);
+  });
+
+  it('ignores the 0×0 size of a minimized window and takes the next real one', async () => {
+    await start(AUTO, 1440, 900, 1440);
+    await core.settle();
+    expect(core.zooms).toEqual([1.25]);
+    // Windows: свёрнутое окно отдаёт 0×0. Масштаб не трогаем ни при сворачивании, ни при разворачивании.
+    core.resize(0, 0);
+    await afterDelay();
+    expect(core.zooms).toEqual([1.25]);
+    expect(core.waiting).toHaveLength(0);
+    core.resize(1440, 900);
+    await afterDelay();
+    expect(core.zooms).toEqual([1.25]);
+    core.resize(1100, 700);
+    await afterDelay();
+    expect(core.zooms).toEqual([1.25, 1]);
+  });
+
+  it('ignores a size with one side 0, also for a plain scale', async () => {
+    await start(125, 1600, 1000);
+    await core.settle();
+    core.resize(1600, 0);
+    await afterDelay();
+    core.resize(0, 1000);
+    await afterDelay();
+    expect(core.zooms).toEqual([1.25]);
+  });
+
+  it('waits for a real size when the window starts minimized', async () => {
+    await start(125, 0, 0);
+    expect(core.zooms).toEqual([]);
+    expect(getState().error).toBeNull();
+    core.resize(1600, 1000);
+    await afterDelay();
+    expect(core.zooms).toEqual([1.25]);
   });
 });
 
@@ -441,6 +498,85 @@ describe('zoom errors', () => {
     expect(core.zooms).toEqual([1.25]);
     press('Minus');
     expect(core.zooms).toEqual([1.25, 1.1]);
+  });
+});
+
+describe('window size errors', () => {
+  it('shows the error once when the window size cannot be read, and applies the scale after a later read', async () => {
+    prepare(100, 1600, 1000);
+    api.windowMetrics.mockRejectedValue(new Error('denied'));
+    const errors = watchErrors();
+    stop = startZoom();
+    await flush();
+    expect(core.zooms).toEqual([]);
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+    // Клавиша, сохранение настроек и новый неудачный замер масштаб не применяют, ошибка не повторяется.
+    press('Equal');
+    await flush();
+    expect(saved()).toEqual([110]);
+    setState({ settings: { ...settings, uiScale: 125 } });
+    core.resize(1600, 1000);
+    await afterDelay();
+    expect(core.zooms).toEqual([]);
+    expect(errors).toHaveLength(1);
+    // Размер прочитался: применяется выбранный.
+    api.windowMetrics.mockImplementation(async () => ({ ...core.metrics }));
+    core.resize(1600, 1000);
+    await afterDelay();
+    expect(core.zooms).toEqual([1.25]);
+    expect(errors).toHaveLength(1);
+  });
+
+  it('shows the error on the login screen too', async () => {
+    prepare(125, 1600, 1000, 1080, { screen: 'login' });
+    api.windowMetrics.mockRejectedValue(new Error('denied'));
+    stop = startZoom();
+    await flush();
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+  });
+
+  it('keeps the last size without an error when a later read fails', async () => {
+    await start(150, 1800, 1200);
+    await core.settle();
+    api.windowMetrics.mockRejectedValueOnce(new Error('denied'));
+    core.resize(1500, 900);
+    await afterDelay();
+    expect(getState().error).toBeNull();
+    expect(core.zooms).toEqual([1.5]);
+    press('Minus');
+    expect(core.zooms).toEqual([1.5, 1.25]);
+  });
+
+  it('shows the error when the window events cannot be listened to, the scale is still applied', async () => {
+    prepare(125, 1600, 1000);
+    api.onWindowChange = async () => {
+      throw new Error('denied');
+    };
+    const errors = watchErrors();
+    stop = startZoom();
+    await flush();
+    expect(core.zooms).toEqual([1.25]);
+    expect(errors).toEqual([{ code: 'zoomFailed', status: null }]);
+  });
+
+  it('shows one error when both the size and the window events fail', async () => {
+    prepare(125, 1600, 1000);
+    api.windowMetrics.mockRejectedValue(new Error('denied'));
+    api.onWindowChange = async () => {
+      throw new Error('denied');
+    };
+    const errors = watchErrors();
+    stop = startZoom();
+    await flush();
+    expect(errors).toEqual([{ code: 'zoomFailed', status: null }]);
+  });
+
+  it('shows nothing when it stopped before the read failed', async () => {
+    prepare(125, 1600, 1000);
+    api.windowMetrics.mockRejectedValue(new Error('denied'));
+    startZoom()();
+    await flush();
+    expect(getState().error).toBeNull();
   });
 });
 
