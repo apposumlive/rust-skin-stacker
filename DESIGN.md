@@ -425,6 +425,7 @@ A 192px tile: 13px / 700 name (one line, ellipsis), 13px sub-line, a 96px image 
 - **Queue:** 28px picture thumbnails (6px radius), 13px names with "x amount", 13px Fog Grey request counts on the right; the list scrolls.
 - **Notes and verdicts:** 13px notes with a 16px icon in Hold Amber (attention), Verified Green (ok) or Fog Grey (muted); the verdict line is 14px / 700 with an 18px icon, green when the count matches and red with a mismatch list when not.
 - **Progress:** 8px track in Raised Slate with an indigo fill, 4px radius; below it the progress line, current item, time left, and a Hold Amber 700 "waiting" line when Steam asks to pause.
+- **Loading:** while the inventory is read outside a run, the panel shows the "Loading the inventory…" heading, the same Hold Amber "waiting" line when Steam asks to pause, and the Stop button in the dock.
 - **Dock:** buttons in a grid with 8px gaps (two columns for pairs such as "Split off 1" and "Combine"); the Run button is 50px, Cancel 40px; the item and multi views end with a 13px Fog Grey footer line.
 
 ### Error banner

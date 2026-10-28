@@ -70,7 +70,7 @@ The second command needs the [GitHub CLI](https://cli.github.com/), signed in wi
 - Requests go one at a time with a pause: 1.5 s by default, 0.5–10 s in Settings. If Steam asks to slow down, the app waits and shows a countdown.
 - Settings also have the interface scale: Auto by default (picked by the screen height: 125% on a screen 1440 px high) or 100–150%. Ctrl+= and Ctrl+− change it, Ctrl+0 returns it to Auto.
 - If Steam refuses to split or combine a stack, the app skips the rest of that stack and goes on.
-- A run stops after three failures in a row (a refused stack counts as one), when Steam stops accepting the token, or when you press Stop (after the current request).
+- A run stops after three failures in a row (a refused stack counts as one), when Steam stops accepting the token, or when you press Stop (after the current request). Stop also cancels an inventory read at once.
 - Steam sometimes merges split items back. Running Split all again is normal.
 
 ## Build from source
