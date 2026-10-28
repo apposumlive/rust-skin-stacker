@@ -39,7 +39,12 @@ export interface Api {
 
 async function tauriWindowMetrics(): Promise<WindowMetrics> {
   const win = getCurrentWindow();
-  const [size, factor, monitor] = await Promise.all([win.innerSize(), win.scaleFactor(), currentMonitor()]);
+  // Экран нужен только «Авто»: не нашёлся — 0, размер окна всё равно отдаём.
+  const [size, factor, monitor] = await Promise.all([
+    win.innerSize(),
+    win.scaleFactor(),
+    currentMonitor().catch(() => null),
+  ]);
   const { width, height } = size.toLogical(factor);
   return { width, height, monitorHeight: monitor ? monitor.size.toLogical(monitor.scaleFactor).height : 0 };
 }
