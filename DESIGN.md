@@ -403,7 +403,7 @@ Quiet, compact controls on dark: solid fills, no gradients, one filled button pe
 - **Search:** 38px, 9px radius, Ink Card; Fog Grey placeholder and icon; focus shows an inset 1.5px indigo ring.
 - **Options:** rows of 18px boxes with 1.5px Checkbox Edge border: round for single choice ("Show"), 5px radius for multiple ("Type"); checked is solid indigo with a white check; the count is 13px Fog Grey, tabular, right aligned. Group headings use the Label style.
 - **Untradable switch:** under the "Show" options, a square checkbox "Непередаваемые" ("Untradable") in 13px with its count; in the narrow column the count wraps to the line below. It shows hidden Twitch drops and the like, and appears only when the inventory has such items.
-- **Inventory totals:** a definition list pinned to the column bottom, 13px Fog Grey labels with Mist White 700 values. When the inventory has hidden untradable items, a "Нельзя передать" ("Untradable") row counts their pieces.
+- **Inventory totals:** a definition list pinned to the column bottom, 13px Fog Grey labels with Mist White 700 values. Values are plain tabular numbers with no unit, so the column lines up on the right; the unit lives in the label ("Всего штук" / "Total pieces"). When the inventory has hidden untradable items, a "Нельзя передать" ("Untradable") row counts their pieces.
 - **Select (sort, language):** Ink Card, 1.5px hairline border, 10px radius, 40px in the drawer (34px, borderless, 8px radius inside the grid bar); focus turns the border indigo.
 - **Token field:** monospace 13px, Night Ground fill, 1.5px hairline border, 10px radius, resizes vertically, about three lines (76px min); focus turns the border indigo; the status line below is 13px, green when valid and red when not.
 
