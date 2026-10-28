@@ -65,23 +65,23 @@ typography:
     lineHeight: 1.45
   caption:
     fontFamily: "'Manrope', system-ui, sans-serif"
-    fontSize: "12px"
+    fontSize: "13px"
     fontWeight: 500
     lineHeight: 1.5
   label:
     fontFamily: "'Manrope', system-ui, sans-serif"
-    fontSize: "11px"
+    fontSize: "12px"
     fontWeight: 800
     lineHeight: 1.45
     letterSpacing: "0.08em"
   micro:
     fontFamily: "'Manrope', system-ui, sans-serif"
-    fontSize: "11px"
+    fontSize: "12px"
     fontWeight: 700
     lineHeight: 1.45
   mono:
     fontFamily: "ui-monospace, 'Cascadia Mono', Consolas, monospace"
-    fontSize: "12px"
+    fontSize: "13px"
     fontWeight: 500
     lineHeight: 1.5
 rounded:
@@ -329,10 +329,10 @@ A near-black blue-grey ground with slightly lighter, slightly bluer surfaces ste
 - **Body Strong** (700, 14px, 1.45): bulk toggles, verdict lines, links.
 - **Button** (800, 14px, 1.45): every `.btn` label, with an 18px icon and an 8px gap.
 - **Body Small** (500, 13px, 1.45): card names (700), key-value rows, queue rows, account line, preview line, status line.
-- **Caption** (500, 12px, 1.5): card sub-line, notes, footers, option counts, inventory totals, disclaimer.
-- **Label** (800, 11px, 0.08em, uppercase): column headings ("Show", "Type"), the queue heading, field labels.
-- **Micro** (700, 11px): layout pills on cards; slider ticks are 11px at weight 500.
-- **Mono** (500, 12px, 1.5): the token paste field.
+- **Caption** (500, 13px, 1.5): card sub-line, notes, footers, option counts, inventory totals, disclaimer.
+- **Label** (800, 12px, 0.08em, uppercase): column headings ("Show", "Type"), the queue heading, field labels.
+- **Micro** (700, 12px): layout pills on cards; slider ticks are 12px at weight 500.
+- **Mono** (500, 13px, 1.5): the token paste field.
 
 Weight 600 appears once (mismatch lines in the result); 500 is the running weight and 700 to 800 carry structure.
 
@@ -344,6 +344,8 @@ Weight 600 appears once (mismatch lines in the result); 500 is the running weigh
 ## Layout
 
 A desktop window with a fixed frame: a 60px top bar, then three columns under it. Filters take 200px on the left, the card grid takes the rest, the details panel takes 340px on the right (`200px minmax(0, 1fr) 340px`). Below 1100px of window width the side columns narrow to 168px and 304px, content padding drops from 18px to 14px and panel padding from 18px to 16px. The window opens at 1280 x 800 and cannot go below 1024 x 640. The page itself never scrolls; each column scrolls on its own, and the top bar and the panel's action dock stay put.
+
+**Interface scale.** Settings offer 100, 110, 125 and 150% (Ctrl+= and Ctrl+− step through them, Ctrl+0 returns to 100%). The scale zooms the whole window (the webview), not the CSS: type, cards and spacing grow together, every size in this document stays in CSS pixels, and the virtual grid keeps counting in them. The window never gets smaller than 1024 x 640 CSS pixels: in a small window the applied scale drops by itself to the largest step that still fits and comes back when the window grows.
 
 The card grid is virtual: only visible rows are in the DOM, so inventories of thousands stay quick. Columns are `floor((width + 12) / (160 + 12))`, so cards are at least 160px wide, 12px apart and exactly 192px tall. That gives four columns at 1280px and three at 1024px. Rows are shifted with a transform and scroll anchoring is off.
 
@@ -399,13 +401,13 @@ Quiet, compact controls on dark: solid fills, no gradients, one filled button pe
 
 ### Filters and fields
 - **Search:** 38px, 9px radius, Ink Card; Fog Grey placeholder and icon; focus shows an inset 1.5px indigo ring.
-- **Options:** rows of 18px boxes with 1.5px Checkbox Edge border: round for single choice ("Show"), 5px radius for multiple ("Type"); checked is solid indigo with a white check; the count is 12px Fog Grey, tabular, right aligned. Group headings use the Label style.
-- **Inventory totals:** a definition list pinned to the column bottom, 12px Fog Grey labels with Mist White 700 values.
+- **Options:** rows of 18px boxes with 1.5px Checkbox Edge border: round for single choice ("Show"), 5px radius for multiple ("Type"); checked is solid indigo with a white check; the count is 13px Fog Grey, tabular, right aligned. Group headings use the Label style.
+- **Inventory totals:** a definition list pinned to the column bottom, 13px Fog Grey labels with Mist White 700 values.
 - **Select (sort, language):** Ink Card, 1.5px hairline border, 10px radius, 40px in the drawer (34px, borderless, 8px radius inside the grid bar); focus turns the border indigo.
-- **Token field:** monospace 12px, Night Ground fill, 1.5px hairline border, 10px radius, resizes vertically, about three lines (76px min); focus turns the border indigo; the status line below is 13px, green when valid and red when not.
+- **Token field:** monospace 13px, Night Ground fill, 1.5px hairline border, 10px radius, resizes vertically, about three lines (76px min); focus turns the border indigo; the status line below is 13px, green when valid and red when not.
 
 ### Skin Card (signature)
-A 192px tile: 13px / 700 name (one line, ellipsis), 12px sub-line, a 96px image well with a contained 84px picture, and a row of 20px pills describing the layout (stack pills such as "x8" in Mist White, "3 singles" in Fog Grey).
+A 192px tile: 13px / 700 name (one line, ellipsis), 13px sub-line, a 96px image well with a contained 84px picture, and a row of 20px pills describing the layout (stack pills such as "x8" in Mist White, "3 singles" in Fog Grey).
 - **Default:** Ink Card, 12px radius, 10px padding (12px bottom), 1.5px transparent border. Hover: Lifted Ink (#1f2432).
 - **Selected:** 1.5px Signal Indigo border and Raised Slate fill; pills turn to Selected Pill (#2c3246).
 - **Preview:** while a plan is open, affected cards write "becomes ..." in Text Indigo 700 and unaffected cards dim to 35% opacity.
@@ -417,12 +419,12 @@ A 192px tile: 13px / 700 name (one line, ellipsis), 12px sub-line, a 96px image 
 ### Side panel
 - **Container:** Slate Panel, 1px left hairline, 18px padding (16px below 1100px). A view change fades the new view up 4px over 200ms; updates inside a view (progress, selection) do not animate.
 - **Section block:** Ink Card, 12px radius, 14px padding, 13px / 800 heading. Holds the "Split off one by one" control.
-- **Count stepper and slider:** 30px stepper buttons (8px radius, Raised Slate) around a 52px by 30px value box (Night Ground, 15px / 800, no spin arrows); a 6px slider track filled with indigo up to the value, an 18px white thumb, 11px tick labels, and a 13px Fog Grey preview line with the new layout in Mist White 700.
+- **Count stepper and slider:** 30px stepper buttons (8px radius, Raised Slate) around a 52px by 30px value box (Night Ground, 15px / 800, no spin arrows); a 6px slider track filled with indigo up to the value, an 18px white thumb, 12px tick labels, and a 13px Fog Grey preview line with the new layout in Mist White 700.
 - **Facts:** definition rows with a 13px Fog Grey label and a right-aligned 20px / 800 figure, each row closed by a 1px hairline (16px figures in the result).
-- **Queue:** 28px picture thumbnails (6px radius), 13px names with "x amount", 12px Fog Grey request counts on the right; the list scrolls.
-- **Notes and verdicts:** 12px notes with a 16px icon in Hold Amber (attention), Verified Green (ok) or Fog Grey (muted); the verdict line is 14px / 700 with an 18px icon, green when the count matches and red with a mismatch list when not.
+- **Queue:** 28px picture thumbnails (6px radius), 13px names with "x amount", 13px Fog Grey request counts on the right; the list scrolls.
+- **Notes and verdicts:** 13px notes with a 16px icon in Hold Amber (attention), Verified Green (ok) or Fog Grey (muted); the verdict line is 14px / 700 with an 18px icon, green when the count matches and red with a mismatch list when not.
 - **Progress:** 8px track in Raised Slate with an indigo fill, 4px radius; below it the progress line, current item, time left, and a Hold Amber 700 "waiting" line when Steam asks to pause.
-- **Dock:** buttons in a grid with 8px gaps (two columns for pairs such as "Split off 1" and "Combine"); the Run button is 50px, Cancel 40px; the item and multi views end with a 12px Fog Grey footer line.
+- **Dock:** buttons in a grid with 8px gaps (two columns for pairs such as "Split off 1" and "Combine"); the Run button is 50px, Cancel 40px; the item and multi views end with a 13px Fog Grey footer line.
 
 ### Error banner
 Fault Wash fill, Pale Fault Red 13px text, 10px radius, 8px 8px 8px 14px padding, an 18px alert icon and a 32px action button pushed right (primary for a new token, secondary for retry). It rises in over 200ms and carries `role="alert"`.
@@ -431,7 +433,7 @@ Fault Wash fill, Pale Fault Red 13px text, 10px radius, 8px 8px 8px 14px padding
 Slides in from the right over a scrim: 380px, Slate Panel, 1px left hairline, 22px padding, 18px gaps, Drawer edge shadow, 200ms slide of 24px with fade. Heading 20px / 800 and a close icon button; label-over-control fields; two buttons at the bottom (primary Save, secondary Close). The rest of the window is inert while it is open and Tab is trapped inside.
 
 ### Sign-in card
-Centred card, `min(560px, 100%)`, Slate Panel with a 1px hairline, 16px radius, 22px by 26px padding, 12px gaps, rising in over 250ms. Wordmark and language button on top, a 24px / 800 title, three numbered steps (24px circular badges in Indigo Wash with Text Indigo), a secondary button to open the token page, the token field, the status line, a primary Continue that stays disabled until the token validates, a "why this is safe" block (Ink Card, 12px radius, green shield icon, small grey bullets) and a centred 12px disclaimer. The non-affiliation line ("Not affiliated with Valve or Facepunch") stays on this screen and in settings.
+Centred card, `min(560px, 100%)`, Slate Panel with a 1px hairline, 16px radius, 22px by 26px padding, 12px gaps, rising in over 250ms. Wordmark and language button on top, a 24px / 800 title, three numbered steps (24px circular badges in Indigo Wash with Text Indigo), a secondary button to open the token page, the token field, the status line, a primary Continue that stays disabled until the token validates, a "why this is safe" block (Ink Card, 12px radius, green shield icon, small grey bullets) and a centred 13px disclaimer. The non-affiliation line ("Not affiliated with Valve or Facepunch") stays on this screen and in settings.
 
 ### Named Rules
 **The Preview-In-Place Rule.** What an operation will do is shown on the grid before it runs: affected cards say "becomes ...", the rest dim to 35%, and the result closes with a reconciliation verdict in the panel.
