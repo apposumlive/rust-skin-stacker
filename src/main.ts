@@ -48,6 +48,8 @@ async function boot(): Promise<void> {
     token: null,
     inventory: null,
     loading: false,
+    loadWaitUntil: null,
+    loadStopping: false,
     error: null,
     tokenExpired: false,
     filter: initialFilter,

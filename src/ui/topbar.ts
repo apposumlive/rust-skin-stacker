@@ -94,9 +94,11 @@ export function createTopbar(el: HTMLElement): Part {
 
   const paint = (s: State) => {
     const running = s.panel.kind === 'running';
-    const open = s.panel.kind === 'plan' ? s.panel.plan.operation.kind : null;
+    // План под видом «Загрузка» не виден: кнопка не должна светиться «открытой».
+    const open = s.panel.kind === 'plan' && !s.loading ? s.panel.plan.operation.kind : null;
     for (const [button, kind] of [[split, 'splitAll'], [combine, 'combineAll']] as const) {
-      button.disabled = running || !s.inventory;
+      // План, открытый во время чтения, не виден под видом «Загрузка», а после чтения панель всё равно сбрасывается.
+      button.disabled = running || !s.inventory || s.loading;
       button.classList.toggle('active', open === kind);
       button.setAttribute('aria-pressed', String(open === kind));
     }

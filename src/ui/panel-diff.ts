@@ -12,6 +12,8 @@ export interface Shown {
   inventory: Inventory | null;
   delay: number;
   loading: boolean;
+  loadWaitUntil: number | null;
+  loadStopping: boolean;
 }
 
 export type PanelStep = 'keep' | 'patch' | 'rebuild';
@@ -23,8 +25,16 @@ export function shownOf(state: State): Shown {
     inventory: state.inventory,
     delay: state.settings.delayMs,
     loading: state.loading,
+    loadWaitUntil: state.loadWaitUntil,
+    loadStopping: state.loadStopping,
   };
 }
+
+/**
+ * Чтение без запуска: правая панель показывает вид «Загрузка», а не выбор, план или итог. Во время запуска чтение
+ * (перед ним и после него) идёт внутри «Хода» и своего вида не имеет.
+ */
+export const showsLoad = (s: { loading: boolean; panel: Panel }): boolean => s.loading && s.panel.kind !== 'running';
 
 export function panelStep(prev: Shown | null, next: Shown): PanelStep {
   if (!prev) return 'rebuild';
@@ -33,12 +43,16 @@ export function panelStep(prev: Shown | null, next: Shown): PanelStep {
   if (prev.panel.kind === 'running' && next.panel.kind === 'running' && prev.panel.plan === next.panel.plan && prev.inventory && next.inventory) {
     return prev.panel === next.panel && prev.inventory === next.inventory && prev.delay === next.delay ? 'keep' : 'patch';
   }
+  // Чтение без запуска: вид читает только ожидание и «Остановить»; выбор, панель и инвентарь под ним не видны.
+  if (showsLoad(prev) && showsLoad(next)) {
+    return prev.loadWaitUntil === next.loadWaitUntil && prev.loadStopping === next.loadStopping ? 'keep' : 'patch';
+  }
   return (Object.keys(next) as (keyof Shown)[]).every((k) => prev[k] === next[k]) ? 'keep' : 'rebuild';
 }
 
 /** Появление панели играет, только когда на её месте стал другой вид, а не когда тот же вид обновился. */
 export function entering(prev: Shown | null, next: Shown): boolean {
-  return !prev || prev.panel.kind !== next.panel.kind || !prev.inventory !== !next.inventory;
+  return !prev || prev.panel.kind !== next.panel.kind || !prev.inventory !== !next.inventory || showsLoad(prev) !== showsLoad(next);
 }
 
 /** Где был фокус, когда вид панели собирался заново: в панели, потерян (на <body>) или в другом месте окна. */

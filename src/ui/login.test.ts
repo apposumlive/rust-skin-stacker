@@ -38,6 +38,8 @@ describe('login screen', () => {
       token: null,
       inventory: null,
       loading: false,
+      loadWaitUntil: null,
+      loadStopping: false,
       error: null,
       tokenExpired: false,
       filter: defaultFilter(),
