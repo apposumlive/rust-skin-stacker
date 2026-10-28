@@ -171,6 +171,31 @@ describe('layout', () => {
   it('keeps the token field to about three lines', () => {
     expect(parseFloat(prop(rule(loginCss, '.login-field'), 'min-height'))).toBeLessThanOrEqual(80);
   });
+
+  it('fits the sign-in screen into 1152×720 (a 1440×900 window at 125 %) with at least 12 px to spare', () => {
+    // Высоты блоков карточки, замеренные в Chrome (RU и EN одинаковы): шапка, заголовок, вводный текст, шаги,
+    // кнопка страницы токена, поле, пустая строка состояния, «Продолжить», «Почему это безопасно», дисклеймер.
+    const blocks = [30, 29, 40, 88, 44, 85, 20, 44, 144, 19];
+    const vertical = (padding: string) => {
+      const [top, , bottom = top] = padding.split(/\s+/).map(parseFloat);
+      return top + bottom;
+    };
+    const card = rule(loginCss, '.login-card');
+    // Отрицательные поля строки состояния прижимают её к полю; без них — 0.
+    const status = rule(loginCss, '.login-status');
+    const margin = /(?:^|[;\s])margin\s*:/.test(status) ? prop(status, 'margin') : '0';
+    const [statusTop, , statusBottom = statusTop] = margin.split(/\s+/).map(parseFloat);
+    const height =
+      vertical(prop(rule(loginCss, '.login'), 'padding')) +
+      vertical(prop(card, 'padding')) +
+      2 + // рамка карточки
+      parseFloat(prop(card, 'gap')) * (blocks.length - 1) +
+      statusTop +
+      statusBottom +
+      blocks.reduce((a, b) => a + b, 0);
+    // Окно 1280×800 выше: там запас больше.
+    expect(height).toBeLessThanOrEqual(720 - 12);
+  });
 });
 
 describe('item pictures', () => {

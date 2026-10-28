@@ -33,7 +33,7 @@ export interface Api {
   /** Зум всего окна: 1 — 100 %, 1.25 — 125 %. */
   setZoom(factor: number): Promise<void>;
   windowMetrics(): Promise<WindowMetrics>;
-  /** Окно изменило размер или перешло на экран с другим масштабом системы. */
+  /** Окно изменило размер, сдвинулось (например, на другой экран) или его экран сменил масштаб системы. */
   onWindowChange(callback: () => void): Promise<() => void>;
 }
 
@@ -49,19 +49,23 @@ async function tauriWindowMetrics(): Promise<WindowMetrics> {
   return { width, height, monitorHeight: monitor ? monitor.size.toLogical(monitor.scaleFactor).height : 0 };
 }
 
+// Размер окна, масштаб системы и перенос на другой экран: «Авто» берёт масштаб по экрану. Подписка не удалась —
+// уже сделанные снимаются.
 async function onTauriWindowChange(callback: () => void): Promise<() => void> {
   const win = getCurrentWindow();
-  const offResized = await win.onResized(() => callback());
+  const offs: Array<() => void> = [];
+  const off = () => {
+    for (const one of offs) one();
+  };
   try {
-    const offScale = await win.onScaleChanged(() => callback());
-    return () => {
-      offResized();
-      offScale();
-    };
+    offs.push(await win.onResized(() => callback()));
+    offs.push(await win.onScaleChanged(() => callback()));
+    offs.push(await win.onMoved(() => callback()));
   } catch (e) {
-    offResized();
+    off();
     throw e;
   }
+  return off;
 }
 
 const tauriApi: Api = {

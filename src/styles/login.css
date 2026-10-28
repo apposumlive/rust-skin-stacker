@@ -3,11 +3,12 @@
 .lang { height: 30px; min-width: 40px; padding: 0 8px; border-radius: 8px; color: var(--text-2); font-size: 13px; font-weight: 800; }
 .lang:hover { background: var(--card); color: var(--text); }
 
-/* Отступы плотные: при окне 1280×800 вход помещается без прокрутки, при 1024×640 «Продолжить» видна сразу. */
-.login { height: 100%; overflow-y: auto; display: grid; place-items: center; padding: 20px 24px; }
+/* Отступы плотные: окно 1440×900 при 125 % (1152×720 CSS-пикселей) и 1280×800 вмещают вход без прокрутки с запасом,
+   при 1024×640 «Продолжить» видна сразу. */
+.login { height: 100%; overflow-y: auto; display: grid; place-items: center; padding: 16px 24px; }
 .login-card {
   width: min(560px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
-  padding: 22px 26px; display: flex; flex-direction: column; gap: 12px; animation: rise 0.25s var(--ease);
+  padding: 20px 26px; display: flex; flex-direction: column; gap: 10px; animation: rise 0.25s var(--ease);
 }
 .login-head { display: flex; align-items: center; justify-content: space-between; }
 .login-title { font-size: 24px; font-weight: 800; line-height: 1.2; }
@@ -23,7 +24,8 @@
 }
 .login-field::placeholder { color: var(--text-2); }
 .login-field:focus { outline: none; border-color: var(--acc); }
-.login-status { min-height: 20px; font-size: 13px; color: var(--text-2); }
+/* Строка состояния прижата к полю (4px), до «Продолжить» 8px: пустая, она не даёт самый большой просвет на экране. */
+.login-status { min-height: 20px; margin: -6px 0 -2px; font-size: 13px; color: var(--text-2); }
 .login-status.ok { color: var(--ok); }
 .login-status.bad { color: var(--bad); }
 .safe { background: var(--card); border-radius: 12px; padding: 12px 16px; display: grid; gap: 6px; }
