@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setLang, t } from '../i18n';
 import { defaultFilter, type Filter } from '../model';
+import type { Panel } from '../store';
 import type { Inventory, Plan, Skin } from '../types';
-import { bannerActionOf, cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys } from './grid-model';
+import { bannerActionOf, bannerBusy, cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys } from './grid-model';
 
 const skin = (key: string): Skin => ({ key, name: key, icon: null, category: null, total: 1, records: [] });
 const inventory = (...keys: string[]): Inventory => ({ skins: keys.map(skin), unreadable: [] });
@@ -145,6 +146,31 @@ describe('empty grid', () => {
   });
 });
 
+describe('banner buttons while something runs', () => {
+  const idle: Panel = { kind: 'selection' };
+  const running: Panel = {
+    kind: 'running',
+    plan: { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] },
+    done: 0,
+    total: 4,
+    errors: 0,
+    key: '',
+    processed: [],
+    waitUntil: null,
+    stopping: false,
+  };
+
+  it('work when nothing runs and nothing is read', () => {
+    expect(bannerBusy(idle, false)).toBe(false);
+  });
+
+  it('are off during a run and during a read, so a retry cannot start a second read over the first', () => {
+    expect(bannerBusy(running, false)).toBe(true);
+    expect(bannerBusy(idle, true)).toBe(true);
+    expect(bannerBusy(running, true)).toBe(true);
+  });
+});
+
 describe('error banner', () => {
   it('offers a new token when the token expired, whatever the error', () => {
     expect(bannerActionOf(true, null)).toBe('newToken');
@@ -154,6 +180,8 @@ describe('error banner', () => {
   it('re-reads the inventory after an error of Steam or the core', () => {
     expect(bannerActionOf(false, { code: 'network', status: null })).toBe('retry');
     expect(bannerActionOf(false, { code: 'http', status: 500 })).toBe('retry');
+    // Чтение оборвала «Остановить»: «Повторить» запускает его заново.
+    expect(bannerActionOf(false, { code: 'stopped', status: null })).toBe('retry');
   });
 
   it('only closes the banner of a scale error: re-reading the inventory would not help', () => {

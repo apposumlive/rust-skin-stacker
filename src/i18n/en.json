@@ -34,6 +34,7 @@
   "error.tooLarge": "The inventory is too large to read in full.",
   "error.busy": "An operation is already running.",
   "error.noInventory": "Load the inventory first.",
+  "error.stopped": "Reading the inventory was stopped.",
   "error.settingsNotSaved": "Could not save the settings.",
   "error.zoomFailed": "Could not change the interface scale.",
   "error.unknown": "Something went wrong. Copy the log and describe the problem in a GitHub issue.",
@@ -164,6 +165,8 @@
   "run.stop": "Stop",
   "run.stopping": "Stopping after the current request…",
   "run.browse": "You can keep browsing the grid while it runs.",
+
+  "load.stopping": "Stopping…",
 
   "result.done": "Done",
   "result.stopped": "Stopped",

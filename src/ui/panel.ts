@@ -4,12 +4,15 @@
 import { h } from '../dom';
 import type { State } from '../store';
 import type { Skin } from '../types';
-import { entering, focusPlace, panelStep, shownOf, swallowsKey, takesFocus, type Shown } from './panel-diff';
+import { entering, focusPlace, panelStep, showsLoad, shownOf, swallowsKey, takesFocus, type Shown } from './panel-diff';
+import { loadingView, patchLoading } from './panel-load';
 import { patchRunning, planView, resultView, runningView } from './panel-run';
 import { hintView, itemView, multiView } from './panel-select';
 import type { Part } from './shell';
 
 function view(state: State, tick: (fn: () => void) => void): HTMLElement {
+  // Чтение без запуска перекрывает всё: и когда инвентаря ещё нет, и когда он есть, но выбор и план под ним не видны.
+  if (showsLoad(state)) return loadingView(state, tick);
   const inventory = state.inventory;
   if (!inventory) return h('div', { class: 'panel' });
   const panel = state.panel;
@@ -28,6 +31,13 @@ function view(state: State, tick: (fn: () => void) => void): HTMLElement {
       return hintView(inventory);
     }
   }
+}
+
+/** Правит текущий вид на месте; `false` — это не тот вид, который нужен состоянию, его надо собрать заново. */
+function patched(current: Element | null, state: State, tick: (fn: () => void) => void): boolean {
+  if (!(current instanceof HTMLElement)) return false;
+  if (showsLoad(state)) return patchLoading(current, state, tick);
+  return state.panel.kind === 'running' && patchRunning(current, state.panel, state, tick);
 }
 
 export function createPanel(el: HTMLElement): Part {
@@ -51,18 +61,25 @@ export function createPanel(el: HTMLElement): Part {
       const next = shownOf(state);
       const step = panelStep(shown, next);
       const enter = entering(shown, next);
+      const prev = shown;
       shown = next;
       if (step === 'keep') return;
       stopTimer();
-      // Ход правится на месте: «Остановить» остаётся тем же узлом и не теряет фокус и клик.
-      const current = el.firstElementChild;
-      if (step === 'patch' && state.panel.kind === 'running' && current instanceof HTMLElement && patchRunning(current, state.panel, state, tick)) return;
+      // Ход и загрузка правятся на месте: «Остановить» остаётся тем же узлом и не теряет фокус и клик.
+      if (step === 'patch' && patched(el.firstElementChild, state, tick)) return;
       const place = focusPlace(document.activeElement, el, document.body);
       const fresh = view(state, tick);
       if (enter) fresh.classList.add('enter');
       el.replaceChildren(fresh);
       // Главный элемент нового вида: «Запустить» в плане, заголовок в ходе и остальных. «Остановить» — только по Tab.
-      if (takesFocus(place) && el.isConnected) fresh.querySelector<HTMLElement>('[data-main]')?.focus({ preventScroll: true });
+      // Исключение — уход с «Хода» или «Загрузки»: человек мог нажать «Остановить» Enter'ом или пробелом, а операция
+      // оборвана, и план вернулся. Следующее нажатие не должно попасть в «Запустить» и снова запустить остановленное,
+      // поэтому фокус идёт на заголовок (у плана он без `data-main`; у остальных видов заголовок и есть главный элемент).
+      if (takesFocus(place) && el.isConnected) {
+        const afterStop = prev !== null && (prev.panel.kind === 'running' || showsLoad(prev));
+        const target = (afterStop && fresh.querySelector<HTMLElement>('[tabindex]')) || fresh.querySelector<HTMLElement>('[data-main]');
+        target?.focus({ preventScroll: true });
+      }
     },
     destroy() {
       stopTimer();

@@ -36,6 +36,10 @@ export interface State {
   token: TokenInfo | null;
   inventory: Inventory | null;
   loading: boolean;
+  /** Конец ожидания по 429 при чтении без запуска, `Date.now()`-миллисекунды (как `waitUntil` у «Хода»). */
+  loadWaitUntil: number | null;
+  /** «Остановить» нажата во время чтения: ядро уже просили, ответа ждём. */
+  loadStopping: boolean;
   /** Ошибка загрузки или запуска — плашка над сеткой. */
   error: UiError | null;
   tokenExpired: boolean;

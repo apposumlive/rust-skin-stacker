@@ -195,6 +195,17 @@ describe('main element and docked buttons', () => {
     expect(byClass(byClass(view, 'pbody')[0], 'queue')).toHaveLength(1);
   });
 
+  it('gives the plan heading a tabindex but leaves it out of the main elements, so Run and Close keep the focus', () => {
+    for (const view of [planView(plan, false, state), planView(empty, false, state)]) {
+      const heading = byClass(view, 'plan-h')[0];
+      expect(heading.tag).toBe('h2');
+      expect(heading.getAttribute('tabindex')).toBe('-1');
+      expect(heading.attrs.has('data-main')).toBe(false);
+      expect(mains(view)).toHaveLength(1);
+      expect(mains(view)[0].tag).toBe('button');
+    }
+  });
+
   it('focuses Close in a plan with nothing to do', () => {
     expect(texts(mains(planView(empty, false, state)))).toEqual([t('plan.close')]);
   });

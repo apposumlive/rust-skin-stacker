@@ -50,6 +50,9 @@ export function bannerActionOf(tokenExpired: boolean, error: UiError | null): Ba
   return error.code === 'zoomFailed' ? 'dismiss' : 'retry';
 }
 
+/** Пока идёт запуск или чтение, «Повторить» и «Вставить токен» не работают; «Закрыть» можно всегда. */
+export const bannerBusy = (panel: Panel, loading: boolean): boolean => panel.kind === 'running' || loading;
+
 export type GridKey = { kind: 'move'; delta: number } | { kind: 'pick'; mode: SelectMode } | { kind: 'swallow' };
 
 /**

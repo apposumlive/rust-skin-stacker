@@ -11,7 +11,7 @@ import { layoutOf, layoutText, pillsOf, visibleSkins, type SelectMode, type Sort
 import type { Panel, State } from '../store';
 import type { Plan, Skin, SkinAfter } from '../types';
 import {
-  bannerActionOf, cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys,
+  bannerActionOf, bannerBusy, cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys,
   type CardNote, type EmptyState,
 } from './grid-model';
 import { CARD_IMAGE_SIZE, itemImage } from './item-image';
@@ -307,8 +307,9 @@ export function createGrid(el: HTMLElement): Part {
         banner.replaceChildren(icon('alert-triangle'), h('span', {}, errorText(s.error)), close);
       }
     }
-    // Пока идёт запуск, «Повторить» слало бы лишние чтения, а «Новый токен» оборвал бы операцию. «Закрыть» можно всегда.
-    if (bannerAction) bannerAction.disabled = s.panel.kind === 'running';
+    // Пока идёт запуск или чтение, «Повторить» слало бы лишние чтения (при отклонённом api.stop — второе поверх первого),
+    // а «Новый токен» оборвал бы операцию. «Закрыть» можно всегда.
+    if (bannerAction) bannerAction.disabled = bannerBusy(s.panel, s.loading);
   };
 
   return {

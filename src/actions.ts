@@ -45,21 +45,46 @@ export function adoptInventory(inventory: Inventory): Pick<State, 'inventory' | 
 /** `keepPanel` — не закрывать открытый вид (перечитывание после смены языка). Иначе панель возвращается к выбору. */
 export async function loadInventory(options: { keepPanel?: boolean } = {}): Promise<void> {
   const mine = session;
-  setState({ loading: true, error: null });
+  setState({ loading: true, loadWaitUntil: null, loadStopping: false, error: null });
+  let unlisten: (() => void) | null = null;
   try {
+    // Ожидание по 429 во время запуска показывает «Ход» (его ведёт runPlan), здесь — только чтение без запуска.
+    unlisten = await api.onProgress((progress) => {
+      if (mine !== session || progress.kind !== 'waiting') return;
+      const s = getState();
+      if (s.loading && s.panel.kind !== 'running') setState({ loadWaitUntil: Date.now() + progress.seconds * 1000 });
+    });
+    if (mine !== session) return;
     const inventory = await api.loadInventory(getState().lang);
     if (mine !== session) return;
     const panel = getState().panel;
     setState({
       ...adoptInventory(inventory),
       loading: false,
+      loadWaitUntil: null,
+      loadStopping: false,
       panel: panel.kind === 'running' || options.keepPanel ? panel : { kind: 'selection' },
     });
   } catch (e) {
     if (mine !== session) return;
-    setState({ loading: false });
+    setState({ loading: false, loadWaitUntil: null, loadStopping: false });
     showError(asUiError(e));
+  } finally {
+    unlisten?.();
   }
+}
+
+/** Просит ядро оборвать чтение инвентаря. Не вышло — «Остановить» снова доступна, ошибка видна. */
+export function stopLoad(): void {
+  const s = getState();
+  if (!s.loading || s.loadStopping || s.panel.kind === 'running') return;
+  setState({ loadStopping: true });
+  const mine = session;
+  api.stop().catch((e: unknown) => {
+    if (mine !== session) return;
+    if (getState().loading) setState({ loadStopping: false });
+    showError(asUiError(e));
+  });
 }
 
 export function setFilter(patch: Partial<Filter>): void {
@@ -97,6 +122,9 @@ export async function showPlan(operation: Operation): Promise<void> {
 export async function runPlan(plan: Plan): Promise<void> {
   if (getState().panel.kind === 'running') return;
   const mine = session;
+  // Остановленное чтение перед запуском возвращает план таким, каким он был: с пометкой «инвентарь изменился» или без.
+  const before = getState().panel;
+  const changed = before.kind === 'plan' && before.changed;
   setState({ panel: running(plan), error: null });
   let unlisten: (() => void) | null = null;
   let first = true;
@@ -107,7 +135,8 @@ export async function runPlan(plan: Plan): Promise<void> {
       first = false;
       onProgress(progress);
       // «Остановить», нажатая, пока start шёл к ядру, стёрта началом запуска. Первое событие значит, что запуск
-      // в ядре начался: повторяем просьбу один раз, и она сработает после текущего запроса.
+      // в ядре начался: повторяем просьбу один раз, и она сработает после текущего запроса. Первым может прийти
+      // и `waiting` чтения перед запуском: повтор тогда обрывает это чтение, и это правильно.
       const panel = getState().panel;
       if (resend && panel.kind === 'running' && panel.stopping) sendStop(mine);
     });
@@ -133,8 +162,14 @@ export async function runPlan(plan: Plan): Promise<void> {
     afterRun();
   } catch (e) {
     if (mine !== session) return;
-    setState({ panel: { kind: 'selection' } });
-    showError(asUiError(e));
+    const error = asUiError(e);
+    // Чтение перед запуском оборвала «Остановить»: в Steam ничего не отправлено, план остаётся как был, без плашки.
+    if (error.code === 'stopped') {
+      setState({ panel: { kind: 'plan', plan, changed } });
+    } else {
+      setState({ panel: { kind: 'selection' } });
+      showError(error);
+    }
     afterRun();
   } finally {
     unlisten?.();
@@ -159,7 +194,10 @@ function onProgress(progress: Progress): void {
   if (progress.kind === 'request') {
     const { done, total, errors, key } = progress;
     const processed = processedAfter(panel.processed, panel.key, key);
-    setState({ panel: { ...panel, done, total, errors, key, processed, waitUntil: null } });
+    // Завершающее событие (пустой ключ, раннер шлёт его один раз) значит, что запуск кончился и нажатие «Остановить»
+    // сработало. Дальше идёт чтение для сверки, и оно обрывается тем же «Остановить»: кнопка снова должна быть активна.
+    const stopping = key === '' ? false : panel.stopping;
+    setState({ panel: { ...panel, done, total, errors, key, processed, waitUntil: null, stopping } });
   } else {
     setState({ panel: { ...panel, waitUntil: Date.now() + progress.seconds * 1000 } });
   }
@@ -217,6 +255,8 @@ export function signIn(token: TokenInfo): void {
     token,
     inventory: null,
     loading: false,
+    loadWaitUntil: null,
+    loadStopping: false,
     selected: [],
     anchor: null,
     panel: { kind: 'selection' },
@@ -245,6 +285,8 @@ export async function forgetToken(): Promise<void> {
     token: null,
     inventory: null,
     loading: false,
+    loadWaitUntil: null,
+    loadStopping: false,
     selected: [],
     anchor: null,
     panel: { kind: 'selection' },

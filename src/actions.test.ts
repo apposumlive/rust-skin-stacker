@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  adoptInventory, dismissError, forgetToken, loadInventory, runPlan, saveSettings, setUiScale, showPlan, signIn, stopRun, switchLang,
+  adoptInventory, dismissError, forgetToken, loadInventory, runPlan, saveSettings, setUiScale, showPlan, signIn, stopLoad, stopRun,
+  switchLang,
 } from './actions';
 import { useApi, type Api } from './api';
-import { setLang } from './i18n';
+import { errorText, setLang } from './i18n';
 import { visibleSkins } from './model';
 import { getState, initState, initialFilter, setState, type Panel, type State } from './store';
 import type { Inventory, InvRecord, Plan, Progress, RunOutcome, Settings, Skin, StartResult } from './types';
@@ -81,6 +82,8 @@ function freshState(over: Partial<State> = {}): void {
     token: { steamidMasked: '7656…0001', expiresAt: 2_000_000_000 },
     inventory: inv('A', 'B'),
     loading: false,
+    loadWaitUntil: null,
+    loadStopping: false,
     error: null,
     tokenExpired: false,
     filter: initialFilter,
@@ -164,6 +167,31 @@ describe('runPlan', () => {
     expect(s.panel).toEqual({ kind: 'selection' });
     expect(s.tokenExpired).toBe(true);
     expect(s.error).toBeNull();
+  });
+
+  it('puts the same plan back, with no banner, when Stop cut the read before the run', async () => {
+    setState({ error: { code: 'network', status: null } });
+    useApi(fakeApi({ start: () => Promise.reject({ code: 'stopped', status: null }) }));
+    await runPlan(plan);
+    const s = getState();
+    expect(s.panel).toEqual({ kind: 'plan', plan, changed: false });
+    expect(s.panel.kind === 'plan' && s.panel.plan).toBe(plan);
+    expect(s.error).toBeNull();
+    expect(s.tokenExpired).toBe(false);
+  });
+
+  it('puts the plan back with the «inventory changed» note it had before the run', async () => {
+    setState({ panel: { kind: 'plan', plan, changed: true } });
+    useApi(fakeApi({ start: () => Promise.reject({ code: 'stopped', status: null }) }));
+    await runPlan(plan);
+    expect(getState().panel).toEqual({ kind: 'plan', plan, changed: true });
+  });
+
+  it('puts the plan back without the note when it had none', async () => {
+    setState({ panel: { kind: 'plan', plan, changed: false } });
+    useApi(fakeApi({ start: () => Promise.reject({ code: 'stopped', status: null }) }));
+    await runPlan(plan);
+    expect(getState().panel).toEqual({ kind: 'plan', plan, changed: false });
   });
 
   it('does not start a second run while one is going', async () => {
@@ -335,6 +363,36 @@ describe('stopRun', () => {
     expect(running().stopping).toBe(true);
   });
 
+  it('makes Stop active again on the final event, so the re-read after the run can be cut off', async () => {
+    let emit: (p: Progress) => void = () => {};
+    const stop = vi.fn(async () => {});
+    useApi(
+      fakeApi({
+        stop,
+        start: () => new Promise<StartResult>(() => {}),
+        onProgress: async (cb) => {
+          emit = cb;
+          return () => {};
+        },
+      }),
+    );
+    void runPlan(plan);
+    await tick();
+    emit({ kind: 'request', done: 0, total: 4, errors: 0, key: 'A' });
+    stopRun();
+    expect(running().stopping).toBe(true);
+    // Обычные шаги и ожидание «Остановить» не трогают: операция ещё идёт.
+    emit({ kind: 'request', done: 1, total: 4, errors: 0, key: 'A' });
+    emit({ kind: 'waiting', seconds: 5 });
+    expect(running().stopping).toBe(true);
+    // Завершающее событие с пустым ключом: запуск кончился, дальше сверка.
+    emit({ kind: 'request', done: 1, total: 4, errors: 0, key: '' });
+    expect(running().stopping).toBe(false);
+    stopRun();
+    expect(running().stopping).toBe(true);
+    expect(stop).toHaveBeenCalledTimes(2);
+  });
+
   it('does nothing when no run is going', () => {
     const stop = vi.fn(async () => {});
     useApi(fakeApi({ stop }));
@@ -361,6 +419,8 @@ describe('a result that arrives after «Forget token»', () => {
     token: null,
     inventory: null,
     loading: false,
+    loadWaitUntil: null,
+    loadStopping: false,
     selected: [],
     panel: { kind: 'selection' },
     tokenExpired: false,
@@ -433,6 +493,8 @@ describe('a result that arrives after «Forget token»', () => {
     useApi(fakeApi({ loadInventory: () => read.promise }));
     const done = loadInventory();
     expect(getState().loading).toBe(true);
+    // Чтение начинается после подписки на события: «Забыть токен» должно застать его уже идущим.
+    await tick();
     await forgetToken();
     read.resolve(inv('Z'));
     await done;
@@ -443,6 +505,7 @@ describe('a result that arrives after «Forget token»', () => {
     const read = deferred<Inventory>();
     useApi(fakeApi({ loadInventory: () => read.promise }));
     const done = loadInventory();
+    await tick();
     await forgetToken();
     read.reject({ code: 'tokenRejected' });
     await done;
@@ -500,6 +563,8 @@ describe('forgetToken', () => {
       token: null,
       inventory: null,
       loading: false,
+      loadWaitUntil: null,
+      loadStopping: false,
       selected: [],
       anchor: null,
       panel: { kind: 'selection' },
@@ -610,6 +675,256 @@ describe('loadInventory', () => {
     const s = getState();
     expect(s.tokenExpired).toBe(true);
     expect(s.error).toBeNull();
+  });
+});
+
+describe('loadInventory progress', () => {
+  let emit: (p: Progress) => void = () => {};
+  const unlisten = vi.fn();
+
+  /** Чтение, которое закрывает тест; события приходят через `emit`. */
+  function reading(over: Partial<Api> = {}) {
+    const read = deferred<Inventory>();
+    unlisten.mockClear();
+    useApi(
+      fakeApi({
+        loadInventory: () => read.promise,
+        onProgress: async (cb) => {
+          emit = cb;
+          return unlisten;
+        },
+        ...over,
+      }),
+    );
+    return read;
+  }
+
+  it('shows the 429 wait of the read and drops it when the read ends', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    expect(getState()).toMatchObject({ loading: true, loadWaitUntil: null, loadStopping: false });
+    const before = Date.now();
+    emit({ kind: 'waiting', seconds: 10 });
+    expect(getState().loadWaitUntil).toBeGreaterThanOrEqual(before + 10_000);
+    expect(getState().loadWaitUntil).toBeLessThanOrEqual(Date.now() + 10_000);
+    read.resolve(inv('A'));
+    await done;
+    expect(getState()).toMatchObject({ loading: false, loadWaitUntil: null, loadStopping: false });
+  });
+
+  it('starts every read with no wait and no stop flag left from the previous one', async () => {
+    setState({ loadWaitUntil: Date.now() + 5_000, loadStopping: true });
+    const read = reading();
+    const done = loadInventory();
+    expect(getState()).toMatchObject({ loading: true, loadWaitUntil: null, loadStopping: false });
+    read.resolve(inv('A'));
+    await done;
+  });
+
+  it('drops the wait and the stop flag when the read fails', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    emit({ kind: 'waiting', seconds: 10 });
+    setState({ loadStopping: true });
+    read.reject({ code: 'network' });
+    await done;
+    expect(getState()).toMatchObject({ loading: false, loadWaitUntil: null, loadStopping: false, error: { code: 'network', status: null } });
+  });
+
+  it('ignores the request events: only the wait is shown', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    emit({ kind: 'request', done: 1, total: 4, errors: 0, key: 'A' });
+    expect(getState().loadWaitUntil).toBeNull();
+    read.resolve(inv('A'));
+    await done;
+  });
+
+  it('ignores a wait that comes after the read ended', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    read.resolve(inv('A'));
+    await done;
+    emit({ kind: 'waiting', seconds: 10 });
+    expect(getState().loadWaitUntil).toBeNull();
+  });
+
+  it('ignores a wait that belongs to the read of an old session', async () => {
+    const first = reading();
+    const firstDone = loadInventory();
+    await tick();
+    const old = emit;
+    await forgetToken();
+    setState({ screen: 'main' });
+    const second = reading();
+    const done = loadInventory();
+    await tick();
+    old({ kind: 'waiting', seconds: 10 });
+    expect(getState().loadWaitUntil).toBeNull();
+    emit({ kind: 'waiting', seconds: 10 });
+    expect(getState().loadWaitUntil).not.toBeNull();
+    second.resolve(inv('A'));
+    await done;
+    first.resolve(inv('OLD'));
+    await firstDone;
+  });
+
+  it('leaves the wait to the running view while a run is going', async () => {
+    const listeners: Array<(p: Progress) => void> = [];
+    const read = reading({
+      start: () => new Promise<StartResult>(() => {}),
+      onProgress: async (cb) => {
+        listeners.push(cb);
+        return unlisten;
+      },
+    });
+    void runPlan(plan);
+    await tick();
+    const done = loadInventory();
+    await tick();
+    for (const listener of listeners) listener({ kind: 'waiting', seconds: 10 });
+    expect(running().waitUntil).not.toBeNull();
+    expect(getState().loadWaitUntil).toBeNull();
+    read.resolve(inv('A'));
+    await done;
+    expect(getState().loadWaitUntil).toBeNull();
+  });
+
+  it('releases the listener after a read that worked', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    expect(unlisten).not.toHaveBeenCalled();
+    read.resolve(inv('A'));
+    await done;
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases the listener after a read that failed', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    read.reject({ code: 'network' });
+    await done;
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the error and does not read when the subscription fails', async () => {
+    const load = vi.fn(async () => inv('A'));
+    useApi(fakeApi({ onProgress: () => Promise.reject({ code: 'unknown' }), loadInventory: load }));
+    await loadInventory();
+    expect(load).not.toHaveBeenCalled();
+    expect(getState()).toMatchObject({ loading: false, loadWaitUntil: null, loadStopping: false, error: { code: 'unknown', status: null } });
+  });
+
+  it('does not read when the token was forgotten while subscribing', async () => {
+    const subscribed = deferred<() => void>();
+    const load = vi.fn(async () => inv('A'));
+    useApi(fakeApi({ onProgress: () => subscribed.promise, loadInventory: load }));
+    const done = loadInventory();
+    await forgetToken();
+    subscribed.resolve(unlisten);
+    await done;
+    expect(load).not.toHaveBeenCalled();
+    expect(unlisten).toHaveBeenCalledTimes(1);
+    expect(getState()).toMatchObject({ screen: 'login', inventory: null, loading: false, loadWaitUntil: null, loadStopping: false });
+  });
+
+  it('turns the read cut off by Stop into the banner with the text of the stop and clears the flags', async () => {
+    const read = reading();
+    const before = getState().inventory;
+    const done = loadInventory();
+    await tick();
+    emit({ kind: 'waiting', seconds: 10 });
+    stopLoad();
+    expect(getState().loadStopping).toBe(true);
+    read.reject({ code: 'stopped', status: null });
+    await done;
+    const s = getState();
+    expect(s).toMatchObject({ loading: false, loadStopping: false, loadWaitUntil: null, error: { code: 'stopped', status: null } });
+    expect(s.tokenExpired).toBe(false);
+    expect(s.inventory).toBe(before);
+    expect(errorText(s.error!)).toBe('Reading the inventory was stopped.');
+  });
+});
+
+describe('stopLoad', () => {
+  async function reading(over: Partial<Api> = {}) {
+    const read = deferred<Inventory>();
+    useApi(fakeApi({ loadInventory: () => read.promise, ...over }));
+    const done = loadInventory();
+    await tick();
+    return { read, done };
+  }
+
+  it('marks the read as stopping and asks the core to stop only once', async () => {
+    const stop = vi.fn(async () => {});
+    const { read, done } = await reading({ stop });
+    stopLoad();
+    stopLoad();
+    await tick();
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(getState()).toMatchObject({ loading: true, loadStopping: true });
+    read.resolve(inv('A'));
+    await done;
+  });
+
+  it('does nothing when no read is going', () => {
+    const stop = vi.fn(async () => {});
+    useApi(fakeApi({ stop }));
+    stopLoad();
+    expect(stop).not.toHaveBeenCalled();
+    expect(getState().loadStopping).toBe(false);
+  });
+
+  it('does nothing while a run is going: that Stop belongs to the running view', async () => {
+    const stop = vi.fn(async () => {});
+    useApi(fakeApi({ stop, start: () => new Promise<StartResult>(() => {}) }));
+    void runPlan(plan);
+    await tick();
+    setState({ loading: true });
+    stopLoad();
+    expect(stop).not.toHaveBeenCalled();
+    expect(getState().loadStopping).toBe(false);
+  });
+
+  it('lets the user press Stop again and shows the error when the core fails', async () => {
+    const stop = vi.fn(() => Promise.reject({ code: 'unknown' }));
+    const { read, done } = await reading({ stop });
+    stopLoad();
+    await tick();
+    expect(getState()).toMatchObject({ loading: true, loadStopping: false, error: { code: 'unknown', status: null } });
+    stopLoad();
+    expect(stop).toHaveBeenCalledTimes(2);
+    read.resolve(inv('A'));
+    await done;
+  });
+
+  it('shows the failure of the stop request but has no flag to drop once the read ended', async () => {
+    const stop = deferred<void>();
+    const { read, done } = await reading({ stop: () => stop.promise });
+    stopLoad();
+    read.resolve(inv('A'));
+    await done;
+    stop.reject({ code: 'unknown' });
+    await tick();
+    expect(getState()).toMatchObject({ loading: false, loadStopping: false, error: { code: 'unknown', status: null } });
+  });
+
+  it('does not show the failure of an old stop in the new session', async () => {
+    const stop = deferred<void>();
+    const { read, done } = await reading({ stop: () => stop.promise });
+    stopLoad();
+    await forgetToken();
+    stop.reject({ code: 'unknown' });
+    await tick();
+    expect(getState()).toMatchObject({ screen: 'login', error: null, loadStopping: false });
+    read.resolve(inv('A'));
+    await done;
   });
 });
 
@@ -886,6 +1201,15 @@ describe('Stop pressed before the run reached the core', () => {
     expect(running().stopping).toBe(true);
   });
 
+  it('repeats the request on a waiting event too, not only on a request event', async () => {
+    const stop = vi.fn(async () => {});
+    await startRun(stop);
+    stopRun();
+    emit({ kind: 'waiting', seconds: 5 });
+    expect(stop).toHaveBeenCalledTimes(2);
+    expect(running().stopping).toBe(true);
+  });
+
   it('is not asked again when Stop was pressed after the run started', async () => {
     const stop = vi.fn(async () => {});
     await startRun(stop);
@@ -972,6 +1296,24 @@ describe('language change', () => {
     expect(getState().panel.kind).toBe('result');
   });
 
+  it('re-reads after a run that Stop cut before it started, and keeps the plan view', async () => {
+    const run = deferred<StartResult>();
+    const load = vi.fn(async () => inv('A', 'B'));
+    useApi(fakeApi({ start: () => run.promise, loadInventory: load }));
+    const done = runPlan(plan);
+    await tick();
+    await switchLang('ru');
+    await tick();
+    expect(load).not.toHaveBeenCalled();
+    run.reject({ code: 'stopped', status: null });
+    await done;
+    await tick();
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledWith('ru');
+    expect(getState().panel.kind).toBe('plan');
+    expect(getState().error).toBeNull();
+  });
+
   it('forgets the pending re-read with the token', async () => {
     const run = deferred<StartResult>();
     const load = vi.fn(async () => inv('A'));
@@ -1008,6 +1350,7 @@ describe('signIn', () => {
     const read = deferred<Inventory>();
     useApi(fakeApi({ loadInventory: () => read.promise }));
     const done = loadInventory();
+    await tick();
     signIn(token);
     read.reject({ code: 'noToken' });
     await done;
@@ -1018,6 +1361,7 @@ describe('signIn', () => {
     const read = deferred<Inventory>();
     useApi(fakeApi({ loadInventory: () => read.promise }));
     const done = loadInventory();
+    await tick();
     signIn(token);
     read.resolve(inv('OLD'));
     await done;

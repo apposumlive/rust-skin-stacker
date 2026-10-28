@@ -23,13 +23,21 @@ function fact(label: string, value: string): HTMLElement {
   return h('div', { class: 'fact' }, h('dt', {}, label), h('dd', { class: 'num' }, value));
 }
 
+/**
+ * Заголовок плана получает фокус программно, но не как главный элемент (`data-main` у «Запустить» и «Закрыть»):
+ * сюда фокус идёт, когда план возвращается после остановленной операции (panel.ts).
+ */
+function planHeading(operation: Operation): HTMLElement {
+  return h('h2', { class: 'plan-h', tabindex: -1 }, title(operation));
+}
+
 export function planView(plan: Plan, changed: boolean, state: State): HTMLElement {
   const operation = plan.operation;
   if (plan.requests === 0) {
     return panelView(
       'plan',
       [
-        h('h2', { class: 'plan-h' }, title(operation)),
+        planHeading(operation),
         changed ? h('p', { class: 'note' }, icon('refresh'), t('plan.changed')) : null,
         h('p', { class: 'note ok' }, icon('circle-check'), t(isSplit(operation) ? 'plan.nothingSplit' : 'plan.nothingCombine')),
       ],
@@ -42,7 +50,7 @@ export function planView(plan: Plan, changed: boolean, state: State): HTMLElemen
   return panelView(
     'plan',
     [
-      h('h2', { class: 'plan-h' }, title(operation)),
+      planHeading(operation),
       h('p', { class: 'isub' }, sub),
       changed ? h('p', { class: 'note' }, icon('refresh'), t('plan.changed')) : null,
       h(
@@ -94,7 +102,7 @@ interface RunningParts {
 const runningParts = new WeakMap<HTMLElement, RunningParts>();
 
 /** Строка «Steam попросил подождать»: считает секунды раз в секунду и прячется, когда ожидание кончилось. */
-function paintWait(wait: HTMLElement, until: number | null, tick: (fn: () => void) => void): void {
+export function paintWait(wait: HTMLElement, until: number | null, tick: (fn: () => void) => void): void {
   if (until === null) {
     wait.hidden = true;
     wait.textContent = '';
