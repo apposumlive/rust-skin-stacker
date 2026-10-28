@@ -60,7 +60,7 @@
   "filters.untradableHint": "Twitch drops and other items that can't be traded. There is nothing to split or combine in them.",
   "filters.type": "Type",
   "filters.noTypes": "No types",
-  "stats.total": "Total",
+  "stats.total": "Total pieces",
   "stats.records": "Entries in Steam",
   "stats.stacks": "Stacks",
   "stats.untradable": "Untradable",

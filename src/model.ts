@@ -148,6 +148,21 @@ export function totals(inventory: Inventory): Totals {
   };
 }
 
+/**
+ * Строки итогов слева: ключ подписи и число. Значения — только числа, без «шт.»: так столбец справа ровный,
+ * а единица стоит в подписи («Всего штук»). «Нельзя передать» и «Нечитаемых» — только если такие есть.
+ */
+export function statLines(sum: Totals): Array<{ key: string; value: number }> {
+  const lines = [
+    { key: 'stats.total', value: sum.items },
+    { key: 'stats.records', value: sum.records },
+    { key: 'stats.stacks', value: sum.stacks },
+  ];
+  if (sum.untradable) lines.push({ key: 'stats.untradable', value: sum.untradable });
+  if (sum.unreadable) lines.push({ key: 'stats.unreadable', value: sum.unreadable });
+  return lines;
+}
+
 export function categoriesOf(inventory: Inventory): Category[] {
   const byId = new Map<string, Category>();
   for (const skin of inventory.skins) if (skin.category) byId.set(skin.category.id, skin.category);

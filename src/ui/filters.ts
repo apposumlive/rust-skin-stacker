@@ -4,7 +4,7 @@ import { setFilter } from '../actions';
 import { h, icon } from '../dom';
 import { fmtInt } from '../format';
 import { t } from '../i18n';
-import { categoriesOf, counts, totals, type Show } from '../model';
+import { categoriesOf, counts, statLines, totals, type Show } from '../model';
 import { getState, type State } from '../store';
 import type { Category } from '../types';
 import type { Part } from './shell';
@@ -108,15 +108,7 @@ export function createFilters(el: HTMLElement): Part {
       stats.replaceChildren();
       return;
     }
-    const sum = totals(inv);
-    const rows = [
-      statRow(t('stats.total'), t('card.total', { count: fmtInt(sum.items) })),
-      statRow(t('stats.records'), fmtInt(sum.records)),
-      statRow(t('stats.stacks'), fmtInt(sum.stacks)),
-    ];
-    if (sum.untradable) rows.push(statRow(t('stats.untradable'), t('card.total', { count: fmtInt(sum.untradable) })));
-    if (sum.unreadable) rows.push(statRow(t('stats.unreadable'), fmtInt(sum.unreadable)));
-    stats.replaceChildren(...rows);
+    stats.replaceChildren(...statLines(totals(inv)).map((line) => statRow(t(line.key), fmtInt(line.value))));
   };
 
   let lastInventory: State['inventory'] | undefined; // undefined — ещё ничего не рисовали

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from './i18n';
 import {
   apartRecords, canCombine, categoriesOf, clampCount, counts, defaultFilter, isInert, layoutOf, layoutText, matches,
-  nextSelection, pillsOf, splitCapacity, totals, visibleSkins,
+  nextSelection, pillsOf, splitCapacity, statLines, totals, visibleSkins,
 } from './model';
 import type { Inventory, InvRecord, Skin } from './types';
 
@@ -78,6 +78,21 @@ describe('model', () => {
     const i: Inventory = { skins: [skin('A', [5, 1]), skin('B', [1]), skin('C', [1, 1])], unreadable: [{ assetid: null, amount: 2 }] };
     expect(counts(i, defaultFilter())).toEqual({ all: 3, stacks: 1, dupes: 2, inert: 0 });
     expect(totals(i)).toEqual({ items: 11, records: 6, stacks: 1, unreadable: 1, untradable: 0 });
+  });
+
+  it('lists the totals as plain numbers: the column of values lines up', () => {
+    expect(statLines({ items: 438, records: 438, stacks: 0, unreadable: 0, untradable: 433 })).toEqual([
+      { key: 'stats.total', value: 438 },
+      { key: 'stats.records', value: 438 },
+      { key: 'stats.stacks', value: 0 },
+      { key: 'stats.untradable', value: 433 },
+    ]);
+    expect(statLines({ items: 11, records: 6, stacks: 1, unreadable: 1, untradable: 0 })).toEqual([
+      { key: 'stats.total', value: 11 },
+      { key: 'stats.records', value: 6 },
+      { key: 'stats.stacks', value: 1 },
+      { key: 'stats.unreadable', value: 1 },
+    ]);
   });
 
   it('lists categories once, sorted by label', () => {
