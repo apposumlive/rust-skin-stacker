@@ -3,7 +3,7 @@
 // создаются только вошедшие ряды. Так значки не мигают, а клик не теряется, если между нажатием и отпусканием
 // пришло обновление (тик запуска, закрытие меню).
 
-import { forgetToken, loadInventory, selectSkin, setFilter } from '../actions';
+import { dismissError, forgetToken, loadInventory, selectSkin, setFilter } from '../actions';
 import { h, icon } from '../dom';
 import { fmtInt } from '../format';
 import { errorText, t } from '../i18n';
@@ -11,7 +11,8 @@ import { layoutOf, layoutText, pillsOf, visibleSkins, type SelectMode, type Sort
 import type { Panel, State } from '../store';
 import type { Plan, Skin, SkinAfter } from '../types';
 import {
-  cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys, type CardNote, type EmptyState,
+  bannerActionOf, cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys,
+  type CardNote, type EmptyState,
 } from './grid-model';
 import { CARD_IMAGE_SIZE, itemImage } from './item-image';
 import { createPrefetcher, loadImage } from './prefetch';
@@ -294,15 +295,19 @@ export function createGrid(el: HTMLElement): Part {
       lastBanner = key;
       banner.hidden = !key;
       bannerAction = null;
-      if (s.tokenExpired) {
+      const action = bannerActionOf(s.tokenExpired, s.error);
+      if (action === 'newToken') {
         bannerAction = h('button', { class: 'btn pri', type: 'button', onclick: () => void forgetToken() }, t('banner.newToken'));
         banner.replaceChildren(icon('alert-triangle'), h('span', {}, t('banner.tokenExpired')), bannerAction);
-      } else if (s.error) {
+      } else if (action === 'retry' && s.error) {
         bannerAction = h('button', { class: 'btn sec', type: 'button', onclick: () => void loadInventory() }, icon('refresh'), t('banner.retry'));
         banner.replaceChildren(icon('alert-triangle'), h('span', {}, errorText(s.error)), bannerAction);
+      } else if (action === 'dismiss' && s.error) {
+        const close = h('button', { class: 'btn sec', type: 'button', onclick: () => dismissError() }, t('banner.dismiss'));
+        banner.replaceChildren(icon('alert-triangle'), h('span', {}, errorText(s.error)), close);
       }
     }
-    // Пока идёт запуск, «Повторить» слало бы лишние чтения, а «Новый токен» оборвал бы операцию.
+    // Пока идёт запуск, «Повторить» слало бы лишние чтения, а «Новый токен» оборвал бы операцию. «Закрыть» можно всегда.
     if (bannerAction) bannerAction.disabled = s.panel.kind === 'running';
   };
 

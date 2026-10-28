@@ -1,9 +1,9 @@
-// Чистые решения сетки: заголовок, пустое состояние, клавиши карточки. Их проверяют тесты.
+// Чистые решения сетки: заголовок, пустое состояние, кнопка плашки ошибки, клавиши карточки. Их проверяют тесты.
 
 import { tn } from '../i18n';
-import { isInert, type Filter, type SelectMode, type Show } from '../model';
+import { isInert, matches, type Filter, type SelectMode, type Show } from '../model';
 import type { Panel } from '../store';
-import type { Inventory, Skin } from '../types';
+import type { Inventory, Skin, UiError } from '../types';
 
 /** Заголовок сетки по тому, что в ней сейчас: «40 предметов», «16 предметов в стопках», «5 предметов можно собрать». */
 export function gridMeta(show: Show, count: number): string {
@@ -33,7 +33,21 @@ export function emptyStateOf(inventory: Inventory, filter: Filter): EmptyState {
   ) {
     return { text: 'grid.onlyUntradable', action: 'showUntradable' };
   }
+  // Поиск и отметки типов нашли только скрытые непередаваемые: «ничего нет» было бы неправдой.
+  if (!filter.untradable && inventory.skins.some((skin) => isInert(skin) && matches(skin, { ...filter, untradable: true }))) {
+    return { text: 'grid.onlyHiddenMatch', action: 'showUntradable' };
+  }
   return { text: 'grid.nothingFound', action: 'reset' };
+}
+
+/** Кнопка плашки ошибки: «Вставить токен», «Повторить» (перечитать инвентарь) или «Закрыть»; null — плашки нет. */
+export type BannerAction = 'newToken' | 'retry' | 'dismiss';
+
+export function bannerActionOf(tokenExpired: boolean, error: UiError | null): BannerAction | null {
+  if (tokenExpired) return 'newToken';
+  if (!error) return null;
+  // Масштаб к инвентарю отношения не имеет: перечитывать его незачем, плашку закрывают (или она уходит сама).
+  return error.code === 'zoomFailed' ? 'dismiss' : 'retry';
 }
 
 export type GridKey = { kind: 'move'; delta: number } | { kind: 'pick'; mode: SelectMode } | { kind: 'swallow' };

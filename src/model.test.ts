@@ -175,6 +175,17 @@ describe('untradable items with nothing to do', () => {
     expect(isInert({ ...drop, records: [], total: 0 })).toBe(false);
   });
 
+  it('is not inert when Steam sent no description: its trade status is unknown, so it stays in the grid', () => {
+    // Без описания ядро даёт ключ `class:<classid>`, а записи выглядят как непередаваемые без даты.
+    const unknown: Skin = { ...skinOf('class:c7', [locked('u1')]), name: 'classid c7' };
+    expect(isInert(unknown)).toBe(false);
+    expect(matches(unknown, defaultFilter())).toBe(true);
+    expect(counts(inv([unknown, drop]), defaultFilter())).toEqual({ all: 1, stacks: 0, dupes: 0, inert: 1 });
+    expect(totals(inv([unknown])).untradable).toBe(0);
+    // Ключ, где `class:` не в начале, — обычное название из Steam.
+    expect(isInert(skinOf('First class: Drop', [locked('g1')]))).toBe(true);
+  });
+
   it('hides inert items unless the switch is on, and keeps the other conditions', () => {
     expect(matches(drop, defaultFilter())).toBe(false);
     expect(matches(drop, shown)).toBe(true);

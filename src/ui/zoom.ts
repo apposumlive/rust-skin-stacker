@@ -3,7 +3,7 @@
 // сам, чтобы всё поместилось. Размер окна и экрана даёт ядро в логических пикселях: от зума WebView он не зависит.
 // Работает на любом экране и во время операции: это только вид.
 
-import { setUiScale, showScaleError } from '../actions';
+import { clearScaleError, setUiScale, showScaleError } from '../actions';
 import { api, type WindowMetrics } from '../api';
 import { getState, subscribe } from '../store';
 import { AUTO, autoScale, chosenScale, effectiveScale, stepScale, zoomKey, type UiScale } from '../zoom';
@@ -48,10 +48,13 @@ export function startZoom(): () => void {
 
   const zoomTo = async (next: UiScale) => {
     zooming = true;
+    const before = getState().error;
     try {
       await api.setZoom(next / 100);
       applied = next;
       refused = null;
+      // Зум сменился: прежняя ошибка масштаба больше не верна.
+      if (!stopped) clearScaleError(before);
     } catch {
       // Зум не сменился: остаётся прежний. Журнал — в ядре, окну записать в него нечего: показываем ошибку.
       refused = next;
@@ -109,8 +112,10 @@ export function startZoom(): () => void {
     if (dir === null) return;
     e.preventDefault();
     // Шаг — от выбранного, у «Авто» — от того, что оно даёт сейчас. Ctrl+0 — снова «Авто».
-    const next = dir === 0 ? AUTO : stepScale(chosenScale(chosen, metrics?.monitorHeight ?? 0), dir);
-    if (next === chosen) return;
+    const current = chosenScale(chosen, metrics?.monitorHeight ?? 0);
+    const next = dir === 0 ? AUTO : stepScale(current, dir);
+    // На краю списка шаг ничего не меняет: «Авто» остаётся «Авто», а не становится тем же масштабом без «Авто».
+    if (next === chosen || (dir !== 0 && next === current)) return;
     chosen = next;
     refused = null;
     apply();

@@ -410,6 +410,23 @@ describe('zoom keys', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it('keeps Auto when the step at the edge gives what Auto gives now', async () => {
+    await start(AUTO, 1440, 900, 1080);
+    await core.settle();
+    const event = press('Minus');
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+    expect(core.zooms).toEqual([1]);
+    // Выбрано по-прежнему «Авто»: на экране 1440 px окно само переходит на 125 %.
+    core.moveTo(1440);
+    await afterDelay();
+    expect(core.zooms).toEqual([1, 1.25]);
+    // Экран неизвестен: «Авто» даёт 100, Ctrl+− тоже ничего не сохраняет.
+    await start(AUTO, 1440, 900, 0);
+    press('Minus');
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('saves the choice even if the window is too small to show it', async () => {
     await start(100, 1024, 640);
     await core.settle();
@@ -488,6 +505,43 @@ describe('zoom errors', () => {
     await start(125, 1600, 1000, 1080, { screen: 'login' });
     await core.refuse();
     expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+  });
+
+  it('clears the scale error once a later zoom change worked', async () => {
+    await start(125, 1600, 1000);
+    await core.refuse();
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+    core.resize(1100, 700);
+    await afterDelay();
+    expect(core.zooms).toEqual([1.25, 1]);
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+    await core.answer();
+    expect(getState().error).toBeNull();
+  });
+
+  it('keeps the error the same key press showed while its save was still on the way', async () => {
+    await start(100, 1800, 1200);
+    await core.settle();
+    let saved: (settings: Settings) => void = () => {};
+    save.mockImplementation(() => new Promise<Settings>((resolve) => (saved = resolve)));
+    press('Equal');
+    await core.refuse();
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+    saved({ ...settings, uiScale: 110 });
+    await flush();
+    expect(getState().settings.uiScale).toBe(110);
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+  });
+
+  it('leaves other errors alone when the zoom changes', async () => {
+    await start(150, 1800, 1200);
+    await core.settle();
+    setState({ error: { code: 'network', status: null } });
+    core.resize(1500, 900);
+    await afterDelay();
+    await core.answer();
+    expect(core.zooms).toEqual([1.5, 1.25]);
+    expect(getState().error).toEqual({ code: 'network', status: null });
   });
 
   it('does not ask for the refused scale again on a window change, but does after a key', async () => {

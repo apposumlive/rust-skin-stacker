@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { adoptInventory, forgetToken, loadInventory, runPlan, saveSettings, setUiScale, showPlan, signIn, stopRun, switchLang } from './actions';
+import {
+  adoptInventory, dismissError, forgetToken, loadInventory, runPlan, saveSettings, setUiScale, showPlan, signIn, stopRun, switchLang,
+} from './actions';
 import { useApi, type Api } from './api';
 import { setLang } from './i18n';
 import { visibleSkins } from './model';
@@ -711,6 +713,34 @@ describe('setUiScale', () => {
     expect(getState().settings.uiScale).toBe(125);
   });
 
+  it('clears the scale error once the scale is saved', async () => {
+    setState({ error: { code: 'zoomFailed', status: null } });
+    await setUiScale(110);
+    expect(getState().error).toBeNull();
+  });
+
+  it('leaves other errors and a scale error shown during the save', async () => {
+    setState({ error: { code: 'network', status: null } });
+    await setUiScale(110);
+    expect(getState().error).toEqual({ code: 'network', status: null });
+    // Зум того же нажатия не применился, пока сохранение шло: эта ошибка ещё верна.
+    const answer = deferred<Settings>();
+    useApi(fakeApi({ saveSettings: () => answer.promise }));
+    setState({ error: null });
+    const pending = setUiScale(125);
+    setState({ error: { code: 'zoomFailed', status: null } });
+    answer.resolve({ ...settings, uiScale: 125 });
+    await pending;
+    expect(getState().error).toEqual({ code: 'zoomFailed', status: null });
+  });
+
+  it('keeps the scale error when the save fails', async () => {
+    useApi(fakeApi({ saveSettings: saveFails }));
+    setState({ error: { code: 'zoomFailed', status: null } });
+    await setUiScale(110);
+    expect(getState().error).toEqual({ code: 'settingsNotSaved', status: null });
+  });
+
   it('does not show the error of a press that a later one replaced', async () => {
     const answers = [deferred<Settings>(), deferred<Settings>()];
     let call = 0;
@@ -723,6 +753,14 @@ describe('setUiScale', () => {
     await first;
     expect(getState().error).toBeNull();
     expect(getState().settings.uiScale).toBe(125);
+  });
+});
+
+describe('dismissError', () => {
+  it('closes the error banner', () => {
+    setState({ error: { code: 'zoomFailed', status: null } });
+    dismissError();
+    expect(getState().error).toBeNull();
   });
 });
 

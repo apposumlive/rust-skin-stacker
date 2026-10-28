@@ -283,15 +283,32 @@ export function showScaleError(error: UiError): void {
 }
 
 /**
+ * Зум или сохранение масштаба прошли: ошибка `zoomFailed` больше не нужна. `before` — ошибка в окне, когда вызов
+ * начался: убирается только она. Ошибка, которую показали во время вызова (тем же нажатием клавиши), остаётся.
+ */
+export function clearScaleError(before: UiError | null): void {
+  const error = getState().error;
+  if (error && error === before && error.code === 'zoomFailed') setState({ error: null });
+}
+
+/** Кнопка «Закрыть» на плашке ошибки. */
+export function dismissError(): void {
+  setState({ error: null });
+}
+
+/**
  * Масштаб с клавиш Ctrl+= / Ctrl+− / Ctrl+0 (`0` — «Авто»): сохраняется вместе с остальными настройками,
  * панель настроек не закрывается, язык не перечитывается. Не отклоняется: ошибку показывает `showScaleError`.
  * Масштаб окна при этом не откатывается.
  */
 export async function setUiScale(uiScale: number): Promise<void> {
   const mine = ++scaleSave;
+  const before = getState().error;
   try {
     const saved = await api.saveSettings({ ...getState().settings, uiScale });
-    if (mine === scaleSave) setState({ settings: saved });
+    if (mine !== scaleSave) return;
+    setState({ settings: saved });
+    clearScaleError(before);
   } catch (e) {
     if (mine === scaleSave) showScaleError(asUiError(e));
   }

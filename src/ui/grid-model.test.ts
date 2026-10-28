@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { setLang, t } from '../i18n';
 import { defaultFilter, type Filter } from '../model';
 import type { Inventory, Plan, Skin } from '../types';
-import { cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys } from './grid-model';
+import { bannerActionOf, cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys } from './grid-model';
 
 const skin = (key: string): Skin => ({ key, name: key, icon: null, category: null, total: 1, records: [] });
 const inventory = (...keys: string[]): Inventory => ({ skins: keys.map(skin), unreadable: [] });
@@ -87,8 +87,45 @@ describe('empty grid', () => {
     expect(emptyStateOf(dropsOnly('A'), filter({ show: 'dupes' }))).toEqual(nothing);
     // С переключателем «Непередаваемые» скрывать нечего: новый случай не нужен.
     expect(emptyStateOf(dropsOnly('A'), filter({ untradable: true }))).toEqual(nothing);
-    // Не всё скрыто как дроп — это уже общий случай.
-    expect(emptyStateOf({ skins: [drop('A'), skin('B')], unreadable: [] }, filter())).toEqual(nothing);
+    // Не всё скрыто как дроп, и поиск не находит и дроп — это уже общий случай.
+    expect(emptyStateOf({ skins: [drop('A'), skin('B')], unreadable: [] }, filter({ search: 'x' }))).toEqual(nothing);
+  });
+
+  it('says that the search found only hidden untradable items and offers to show them', () => {
+    const hidden = { text: 'grid.onlyHiddenMatch', action: 'showUntradable' };
+    const tool = { ...drop('Drop C'), category: { id: 'Tool', label: 'Tool' } };
+    const mixed: Inventory = { skins: [drop('Drop A'), skin('Plain B'), tool], unreadable: [] };
+    expect(emptyStateOf(mixed, filter({ search: 'drop' }))).toEqual(hidden);
+    expect(emptyStateOf(dropsOnly('A', 'B'), filter({ search: 'a' }))).toEqual(hidden);
+    // Тип тоже учитывается: дроп подходит и к поиску, и к отметке.
+    expect(emptyStateOf(mixed, filter({ search: 'drop', categories: ['Tool'] }))).toEqual(hidden);
+    expect(emptyStateOf(mixed, filter({ categories: ['Tool'] }))).toEqual(hidden);
+  });
+
+  it('keeps «nothing found» when even the hidden items would not match, or showing them is on', () => {
+    const nothing = { text: 'grid.nothingFound', action: 'reset' };
+    const mixed: Inventory = { skins: [drop('Drop A'), skin('Plain B')], unreadable: [] };
+    // Дроп не подходит к поиску или к типу.
+    expect(emptyStateOf(mixed, filter({ search: 'zzz' }))).toEqual(nothing);
+    expect(emptyStateOf(mixed, filter({ search: 'drop', categories: ['Tool'] }))).toEqual(nothing);
+    // «Стопки» и «Можно собрать» дроп не покажут, даже если показать непередаваемые.
+    expect(emptyStateOf(mixed, filter({ search: 'drop', show: 'stacks' }))).toEqual(nothing);
+    expect(emptyStateOf(mixed, filter({ search: 'drop', show: 'dupes' }))).toEqual(nothing);
+    // Непередаваемые уже показаны.
+    expect(emptyStateOf(mixed, filter({ search: 'zzz', untradable: true }))).toEqual(nothing);
+  });
+
+  it('keeps the earlier cases ahead of the hidden match', () => {
+    expect(emptyStateOf(dropsOnly('A'), filter())).toEqual({ text: 'grid.onlyUntradable', action: 'showUntradable' });
+    expect(emptyStateOf(dropsOnly('A'), filter({ show: 'stacks' }))).toEqual({ text: 'grid.noStacks', action: 'showAll' });
+    expect(emptyStateOf(inventory(), filter({ search: 'a' }))).toEqual({ text: 'grid.empty', action: null });
+  });
+
+  it('has texts for the hidden match in both languages', () => {
+    setLang('ru');
+    expect(t('grid.onlyHiddenMatch')).toBe('Нашлось только среди непередаваемых предметов, а они скрыты.');
+    setLang('en');
+    expect(t('grid.onlyHiddenMatch')).toBe('Only untradable items match, and they are hidden.');
   });
 
   it('puts «no stacks» ahead of the untradable case and keeps «empty inventory» first', () => {
@@ -105,6 +142,33 @@ describe('empty grid', () => {
       "Only items that can't be traded are here: Twitch drops and the like. There is nothing to split or combine in them.",
     );
     expect(t('grid.showUntradable')).toBe('Show them');
+  });
+});
+
+describe('error banner', () => {
+  it('offers a new token when the token expired, whatever the error', () => {
+    expect(bannerActionOf(true, null)).toBe('newToken');
+    expect(bannerActionOf(true, { code: 'zoomFailed', status: null })).toBe('newToken');
+  });
+
+  it('re-reads the inventory after an error of Steam or the core', () => {
+    expect(bannerActionOf(false, { code: 'network', status: null })).toBe('retry');
+    expect(bannerActionOf(false, { code: 'http', status: 500 })).toBe('retry');
+  });
+
+  it('only closes the banner of a scale error: re-reading the inventory would not help', () => {
+    expect(bannerActionOf(false, { code: 'zoomFailed', status: null })).toBe('dismiss');
+  });
+
+  it('has no banner without an error', () => {
+    expect(bannerActionOf(false, null)).toBeNull();
+  });
+
+  it('names the close button in both languages', () => {
+    setLang('ru');
+    expect(t('banner.dismiss')).toBe('Закрыть');
+    setLang('en');
+    expect(t('banner.dismiss')).toBe('Dismiss');
   });
 });
 

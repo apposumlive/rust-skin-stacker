@@ -85,8 +85,12 @@ export function canCombine(skin: Skin): boolean {
   return false;
 }
 
-/** Нельзя передать и делать с ним нечего: дропы Twitch и подобные. */
+/**
+ * Нельзя передать и делать с ним нечего: дропы Twitch и подобные. Скин с ключом `class:…` Steam прислал без описания:
+ * торговый статус неизвестен, такой не прячем.
+ */
 export function isInert(skin: Skin): boolean {
+  if (skin.key.startsWith('class:')) return false;
   const locked = skin.records.length > 0 && skin.records.every((r) => !r.tradable && r.availableAfter === null);
   return locked && !hasStack(skin) && !canCombine(skin);
 }

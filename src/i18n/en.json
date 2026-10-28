@@ -80,6 +80,7 @@
   "grid.nothingFound": "Nothing matches these filters.",
   "grid.noStacks": "No stacks left — everything is single.",
   "grid.onlyUntradable": "Only items that can't be traded are here: Twitch drops and the like. There is nothing to split or combine in them.",
+  "grid.onlyHiddenMatch": "Only untradable items match, and they are hidden.",
   "grid.showAll": "Show all",
   "grid.showUntradable": "Show them",
   "grid.resetFilters": "Reset filters",
@@ -189,6 +190,7 @@
   "banner.tokenExpired": "The token has expired — paste a new one.",
   "banner.newToken": "Paste token",
   "banner.retry": "Try again",
+  "banner.dismiss": "Dismiss",
 
   "settings.title": "Settings",
   "settings.language": "Language",
