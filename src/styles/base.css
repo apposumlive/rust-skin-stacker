@@ -56,8 +56,13 @@ button:disabled { cursor: default; opacity: 0.45; }
 }
 .range:focus-visible { outline-offset: 6px; }
 
+/* Картинка предмета появляется, когда загрузилась (класс loaded ставит itemImage); до этого видна плитка --img. */
+.imgbox img, .big img, .thumb img, .qimg img { opacity: 0; transition: opacity 0.2s var(--ease); }
+.imgbox img.loaded, .big img.loaded, .thumb img.loaded, .qimg img.loaded { opacity: 1; }
+
 @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
 @keyframes fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
+  .imgbox img, .big img, .thumb img, .qimg img { opacity: 1; }
 }

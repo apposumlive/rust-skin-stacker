@@ -3,7 +3,7 @@
 import { tn } from '../i18n';
 import type { Filter, SelectMode, Show } from '../model';
 import type { Panel } from '../store';
-import type { Inventory } from '../types';
+import type { Inventory, Skin } from '../types';
 
 /** Заголовок сетки по тому, что в ней сейчас: «40 предметов», «16 предметов в стопках», «5 предметов можно собрать». */
 export function gridMeta(show: Show, count: number): string {
@@ -73,4 +73,14 @@ export function cardNote(key: string, planned: boolean, current: string, process
   if (current !== '' && key === current) return 'now';
   if (!planned) return 'total';
   return processed.has(key) ? 'processed' : 'becomes';
+}
+
+/** Хэши картинок скинов в порядке сетки, начиная с индекса `from` (следующий после последнего нарисованного ряда). */
+export function iconsAfter(list: Skin[], from: number): string[] {
+  const hashes: string[] = [];
+  for (let i = from; i < list.length; i++) {
+    const icon = list[i].icon;
+    if (icon) hashes.push(icon);
+  }
+  return hashes;
 }

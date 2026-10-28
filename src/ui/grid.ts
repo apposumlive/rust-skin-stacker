@@ -5,17 +5,22 @@
 
 import { forgetToken, loadInventory, selectSkin, setFilter } from '../actions';
 import { h, icon } from '../dom';
-import { fmtInt, iconUrl } from '../format';
+import { fmtInt } from '../format';
 import { errorText, t } from '../i18n';
 import { layoutOf, layoutText, pillsOf, visibleSkins, type SelectMode, type Sort } from '../model';
 import type { Panel, State } from '../store';
 import type { Plan, Skin, SkinAfter } from '../types';
-import { cardNote, currentKey, emptyStateOf, gridKey, gridMeta, processedKeys, type CardNote } from './grid-model';
+import { cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys, type CardNote } from './grid-model';
+import { CARD_IMAGE_SIZE, itemImage } from './item-image';
+import { createPrefetcher, loadImage } from './prefetch';
 import type { Part } from './shell';
 import { CARD_HEIGHT, GAP, MIN_CARD_WIDTH, columnsFor, visibleRange, windowDiff, type Span } from './virtual';
 
 const SKELETON_CARDS = 12;
 const ROW = CARD_HEIGHT + GAP;
+
+// Один подгрузчик на окно: хэши, которые он уже просил, повторно не просит, даже если сетку пересоздали.
+const prefetcher = createPrefetcher(loadImage);
 
 /** Нарисованная карточка и то, что в ней показано сейчас: DOM правится только там, где это отличается. */
 interface Slot {
@@ -40,13 +45,7 @@ function makeSlot(skin: Skin, index: number): Slot {
     { class: 'card', role: 'option', 'aria-selected': 'false', tabindex: -1, 'data-index': index, title: skin.name },
     h('div', { class: 'nm' }, skin.name),
     sub,
-    h(
-      'div',
-      { class: 'imgbox' },
-      skin.icon
-        ? h('img', { src: iconUrl(skin.icon, 128), alt: '', loading: 'lazy', decoding: 'async', draggable: 'false' })
-        : icon('photo-off'),
-    ),
+    h('div', { class: 'imgbox' }, itemImage(skin.icon, CARD_IMAGE_SIZE)),
     h('div', { class: 'layout' }, ...pillsOf(layoutOf(skin)).map((p) => h('span', { class: p.stack ? 'pill st' : 'pill' }, p.text))),
   );
   return { el, sub, skin, selected: false, dim: false, tabbable: false, now: false, change: undefined, note: 'total' };
@@ -229,6 +228,13 @@ export function createGrid(el: HTMLElement): Part {
     if (hadFocus && !cards.contains(document.activeElement)) focusCard(focusIndex);
   };
 
+  // Картинки за нарисованными рядами: только когда сменился список (инвентарь, фильтр, сортировка), прокрутка не в счёт.
+  const prefetchAhead = () => {
+    const hashes = iconsAfter(list, shown?.last ?? 0);
+    if (hashes.length) prefetcher.start(hashes);
+    else prefetcher.cancel();
+  };
+
   const moveFocus = (index: number) => {
     if (!list.length) return;
     focusIndex = Math.min(list.length - 1, Math.max(0, index));
@@ -298,7 +304,8 @@ export function createGrid(el: HTMLElement): Part {
   return {
     update(s) {
       state = s;
-      if (s.inventory !== lastInventory || s.filter !== lastFilter) {
+      const listChanged = s.inventory !== lastInventory || s.filter !== lastFilter;
+      if (listChanged) {
         if (lastFilter && s.filter !== lastFilter) scroller.scrollTop = 0;
         list = s.inventory ? visibleSkins(s.inventory, s.filter) : [];
         lastInventory = s.inventory;
@@ -320,8 +327,10 @@ export function createGrid(el: HTMLElement): Part {
         cards.setAttribute('aria-label', t(s.loading ? 'grid.loading' : 'grid.title'));
       }
       render();
+      if (listChanged) prefetchAhead();
     },
     destroy() {
+      prefetcher.cancel();
       observer.disconnect();
       if (frame) cancelAnimationFrame(frame);
     },

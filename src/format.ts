@@ -1,10 +1,14 @@
 import { getLang, t } from './i18n';
 
-export const ICON_BASE = 'https://community.akamai.steamstatic.com/economy/image/';
+/** CDN Steam: основной адрес (быстрее по замерам) и запасной, если основной не отдал картинку. */
+export const ICON_HOSTS = [
+  'https://community.fastly.steamstatic.com/economy/image/',
+  'https://community.akamai.steamstatic.com/economy/image/',
+];
 
-/** Картинка предмета с CDN Steam — единственный внешний адрес, который грузит окно. */
-export function iconUrl(hash: string, size: number): string {
-  return `${ICON_BASE}${encodeURIComponent(hash)}/${size}fx${size}f`;
+/** Картинка предмета с CDN Steam — единственные внешние адреса, которые грузит окно. */
+export function iconUrl(hash: string, size: number, host = 0): string {
+  return `${ICON_HOSTS[host]}${encodeURIComponent(hash)}/${size}fx${size}f`;
 }
 
 export function fmtInt(n: number): string {
