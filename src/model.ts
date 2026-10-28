@@ -12,6 +12,8 @@ export interface Filter {
   show: Show;
   categories: string[];
   sort: Sort;
+  /** Показывать ли скины, которые нельзя передать и с которыми нечего делать (`isInert`). */
+  untradable: boolean;
 }
 
 export interface Layout {
@@ -28,6 +30,8 @@ export interface Counts {
   all: number;
   stacks: number;
   dupes: number;
+  /** Скинов, с которыми нечего делать (`isInert`): всегда полное число, фильтр на него не влияет. */
+  inert: number;
 }
 
 export interface Totals {
@@ -35,6 +39,8 @@ export interface Totals {
   records: number;
   stacks: number;
   unreadable: number;
+  /** Штук у скинов, с которыми нечего делать (`isInert`). */
+  untradable: number;
 }
 
 export interface Selection {
@@ -46,7 +52,7 @@ export type SelectMode = 'single' | 'toggle' | 'range';
 
 /** Фильтр при открытии окна: все предметы, больше всего штук сверху. */
 export function defaultFilter(): Filter {
-  return { search: '', show: 'all', categories: [], sort: 'amount' };
+  return { search: '', show: 'all', categories: [], sort: 'amount', untradable: false };
 }
 
 /** Стопки по убыванию и сколько записей лежит по одному. */
@@ -79,6 +85,12 @@ export function canCombine(skin: Skin): boolean {
   return false;
 }
 
+/** Нельзя передать и делать с ним нечего: дропы Twitch и подобные. */
+export function isInert(skin: Skin): boolean {
+  const locked = skin.records.length > 0 && skin.records.every((r) => !r.tradable && r.availableAfter === null);
+  return locked && !hasStack(skin) && !canCombine(skin);
+}
+
 /** Записи, которые не соберутся с основной стопкой: у них другие classid или instanceid. */
 export function apartRecords(skin: Skin): InvRecord[] {
   const main = skin.records[0];
@@ -87,6 +99,7 @@ export function apartRecords(skin: Skin): InvRecord[] {
 }
 
 export function matches(skin: Skin, filter: Filter): boolean {
+  if (!filter.untradable && isInert(skin)) return false;
   if (filter.show === 'stacks' && !hasStack(skin)) return false;
   if (filter.show === 'dupes' && !canCombine(skin)) return false;
   if (filter.categories.length > 0 && !(skin.category && filter.categories.includes(skin.category.id))) return false;
@@ -100,11 +113,13 @@ export function visibleSkins(inventory: Inventory, filter: Filter): Skin[] {
   return inventory.skins.filter((s) => matches(s, filter)).sort(filter.sort === 'name' ? byName : byAmount);
 }
 
-export function counts(inventory: Inventory): Counts {
+export function counts(inventory: Inventory, filter: Filter): Counts {
+  const inert = inventory.skins.filter(isInert).length;
   return {
-    all: inventory.skins.length,
+    all: filter.untradable ? inventory.skins.length : inventory.skins.length - inert,
     stacks: inventory.skins.filter(hasStack).length,
     dupes: inventory.skins.filter(canCombine).length,
+    inert,
   };
 }
 
@@ -112,10 +127,12 @@ export function totals(inventory: Inventory): Totals {
   let items = 0;
   let records = 0;
   let stacks = 0;
+  let untradable = 0;
   for (const skin of inventory.skins) {
     items += skin.total;
     records += skin.records.length;
     stacks += skin.records.filter((r) => r.amount > 1).length;
+    if (isInert(skin)) untradable += skin.total;
   }
   const unreadable = inventory.unreadable.reduce((n, u) => n + u.amount, 0);
   return {
@@ -123,6 +140,7 @@ export function totals(inventory: Inventory): Totals {
     records: records + inventory.unreadable.length,
     stacks,
     unreadable: inventory.unreadable.length,
+    untradable,
   };
 }
 

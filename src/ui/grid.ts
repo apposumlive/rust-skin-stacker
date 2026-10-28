@@ -10,13 +10,17 @@ import { errorText, t } from '../i18n';
 import { layoutOf, layoutText, pillsOf, visibleSkins, type SelectMode, type Sort } from '../model';
 import type { Panel, State } from '../store';
 import type { Plan, Skin, SkinAfter } from '../types';
-import { cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys, type CardNote } from './grid-model';
+import {
+  cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys, type CardNote, type EmptyState,
+} from './grid-model';
 import { CARD_IMAGE_SIZE, itemImage } from './item-image';
 import { createPrefetcher, loadImage } from './prefetch';
 import type { Part } from './shell';
 import { CARD_HEIGHT, GAP, MIN_CARD_WIDTH, columnsFor, visibleRange, windowDiff, type Span } from './virtual';
 
 const SKELETON_CARDS = 12;
+/** Текст кнопки пустого состояния по её действию. */
+const EMPTY_BUTTON = { showAll: 'grid.showAll', showUntradable: 'grid.showUntradable', reset: 'grid.resetFilters' } as const;
 const ROW = CARD_HEIGHT + GAP;
 
 // Один подгрузчик на окно: хэши, которые он уже просил, повторно не просит, даже если сетку пересоздали.
@@ -267,9 +271,10 @@ export function createGrid(el: HTMLElement): Part {
     else if (action.kind === 'pick') pick(focusIndex, action.mode);
   });
   // Кнопка пустого состояния: после неё сетка снова не пуста, фокус — на первую карточку, а не на <body>.
-  let emptyAction: 'showAll' | 'reset' | null = null;
+  let emptyAction: EmptyState['action'] = null;
   emptyButton.addEventListener('click', () => {
     if (emptyAction === 'showAll') setFilter({ show: 'all' });
+    else if (emptyAction === 'showUntradable') setFilter({ untradable: true });
     else if (emptyAction === 'reset') setFilter({ search: '', show: 'all', categories: [] });
     if (list.length) moveFocus(0);
   });
@@ -318,7 +323,7 @@ export function createGrid(el: HTMLElement): Part {
         emptyText.textContent = blank ? t(blank.text) : '';
         emptyAction = blank?.action ?? null;
         emptyButton.hidden = !emptyAction;
-        emptyButton.textContent = emptyAction === 'showAll' ? t('grid.showAll') : emptyAction === 'reset' ? t('grid.resetFilters') : '';
+        emptyButton.textContent = emptyAction ? t(EMPTY_BUTTON[emptyAction]) : '';
       }
       paintBanner(s);
       if (s.loading !== lastLoading) {

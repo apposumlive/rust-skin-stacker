@@ -1,7 +1,7 @@
 // Чистые решения сетки: заголовок, пустое состояние, клавиши карточки. Их проверяют тесты.
 
 import { tn } from '../i18n';
-import type { Filter, SelectMode, Show } from '../model';
+import { isInert, type Filter, type SelectMode, type Show } from '../model';
 import type { Panel } from '../store';
 import type { Inventory, Skin } from '../types';
 
@@ -13,8 +13,8 @@ export function gridMeta(show: Show, count: number): string {
 export interface EmptyState {
   /** Ключ текста. */
   text: string;
-  /** Кнопка под текстом: «Показать все», «Сбросить фильтры» или никакой. */
-  action: 'showAll' | 'reset' | null;
+  /** Кнопка под текстом: «Показать все», «Показать их» (непередаваемые), «Сбросить фильтры» или никакой. */
+  action: 'showAll' | 'showUntradable' | 'reset' | null;
 }
 
 /** Что сказать, когда в сетке пусто. Пустой инвентарь — без кнопки: фильтры тут ни при чём. */
@@ -22,6 +22,16 @@ export function emptyStateOf(inventory: Inventory, filter: Filter): EmptyState {
   if (inventory.skins.length === 0) return { text: 'grid.empty', action: null };
   if (filter.show === 'stacks' && !filter.search.trim() && filter.categories.length === 0) {
     return { text: 'grid.noStacks', action: 'showAll' };
+  }
+  // Всё, что есть в инвентаре, скрыто как непередаваемое, и больше ничего сетку не сужает.
+  if (
+    filter.show === 'all' &&
+    !filter.search.trim() &&
+    filter.categories.length === 0 &&
+    !filter.untradable &&
+    inventory.skins.every(isInert)
+  ) {
+    return { text: 'grid.onlyUntradable', action: 'showUntradable' };
   }
   return { text: 'grid.nothingFound', action: 'reset' };
 }

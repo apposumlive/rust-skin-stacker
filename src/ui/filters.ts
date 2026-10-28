@@ -47,11 +47,33 @@ export function createFilters(el: HTMLElement): Part {
     );
     return { value, button, count };
   });
+  // Флажок под вариантами «Показать»: вид как у флажков «Тип», число справа как у вариантов. Виден, только когда есть что скрывать.
+  const untradableCount = h('span', { class: 'c num' });
+  const untradable = h(
+    'button',
+    {
+      class: 'opt long',
+      type: 'button',
+      role: 'checkbox',
+      'aria-checked': 'false',
+      title: t('filters.untradableHint'),
+      hidden: true,
+      onclick: () => setFilter({ untradable: !getState().filter.untradable }),
+    },
+    h('span', { class: 'box' }, icon('check')),
+    t('filters.untradable'),
+    untradableCount,
+  );
   const types = h('div', { role: 'group', 'aria-label': t('filters.type') });
   const stats = h('dl', { class: 'stats' });
   el.append(
     h('label', { class: 'search' }, icon('search'), search),
-    h('div', { role: 'radiogroup', 'aria-label': t('filters.show') }, h('div', { class: 'fh' }, t('filters.show')), ...shows.map((s) => s.button)),
+    h(
+      'div',
+      {},
+      h('div', { role: 'radiogroup', 'aria-label': t('filters.show') }, h('div', { class: 'fh' }, t('filters.show')), ...shows.map((s) => s.button)),
+      untradable,
+    ),
     h('div', {}, h('div', { class: 'fh' }, t('filters.type')), types),
     stats,
   );
@@ -92,25 +114,34 @@ export function createFilters(el: HTMLElement): Part {
       statRow(t('stats.records'), fmtInt(sum.records)),
       statRow(t('stats.stacks'), fmtInt(sum.stacks)),
     ];
+    if (sum.untradable) rows.push(statRow(t('stats.untradable'), t('card.total', { count: fmtInt(sum.untradable) })));
     if (sum.unreadable) rows.push(statRow(t('stats.unreadable'), fmtInt(sum.unreadable)));
     stats.replaceChildren(...rows);
   };
 
   let lastInventory: State['inventory'] | undefined; // undefined — ещё ничего не рисовали
   let lastFilter: State['filter'] | null = null;
+  let lastUntradable: boolean | null = null;
   return {
     update(s) {
       if (s.inventory === lastInventory && s.filter === lastFilter) return;
       const inventoryChanged = s.inventory !== lastInventory;
+      const untradableChanged = s.filter.untradable !== lastUntradable;
       lastInventory = s.inventory;
       lastFilter = s.filter;
+      lastUntradable = s.filter.untradable;
       if (document.activeElement !== search && search.value !== s.filter.search) search.value = s.filter.search;
 
-      // Числа, категории и итоги зависят только от инвентаря; фильтр меняет лишь отметки.
+      // Числа зависят от инвентаря и переключателя «Непередаваемые» (он меняет «Все»); категории и итоги — только от
+      // инвентаря. Остальные части фильтра меняют лишь отметки.
       const inv = s.inventory;
-      if (inventoryChanged) {
-        const c = inv ? counts(inv) : null;
+      if (inventoryChanged || untradableChanged) {
+        const c = inv ? counts(inv, s.filter) : null;
         for (const o of shows) o.count.textContent = c ? fmtInt(c[o.value]) : '';
+        untradableCount.textContent = c ? fmtInt(c.inert) : '';
+        untradable.hidden = !c || c.inert === 0;
+      }
+      if (inventoryChanged) {
         paintTypes(inv ? categoriesOf(inv) : []);
         paintStats(inv);
       }
@@ -119,6 +150,8 @@ export function createFilters(el: HTMLElement): Part {
         o.button.classList.toggle('on', on);
         o.button.setAttribute('aria-checked', String(on));
       }
+      untradable.classList.toggle('on', s.filter.untradable);
+      untradable.setAttribute('aria-checked', String(s.filter.untradable));
       for (const [id, button] of typeButtons) {
         const on = s.filter.categories.includes(id);
         button.classList.toggle('on', on);

@@ -6,6 +6,12 @@ import { cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, proc
 
 const skin = (key: string): Skin => ({ key, name: key, icon: null, category: null, total: 1, records: [] });
 const inventory = (...keys: string[]): Inventory => ({ skins: keys.map(skin), unreadable: [] });
+/** Дроп: одна запись, одна штука, не передаётся и без даты — в сетке по умолчанию скрыт. */
+const drop = (key: string): Skin => ({
+  ...skin(key),
+  records: [{ assetid: `${key}-1`, classid: 'c1', instanceid: '0', amount: 1, tradable: false, marketable: false, availableAfter: null }],
+});
+const dropsOnly = (...keys: string[]): Inventory => ({ skins: keys.map(drop), unreadable: [] });
 const filter = (over: Partial<Filter> = {}): Filter => ({ ...defaultFilter(), ...over });
 
 afterEach(() => setLang('en'));
@@ -65,6 +71,55 @@ describe('empty grid', () => {
 
   it('has no button when the inventory itself is empty', () => {
     expect(emptyStateOf(inventory(), filter({ show: 'stacks', search: 'x' }))).toEqual({ text: 'grid.empty', action: null });
+  });
+
+  it('says that only untradable items are here and offers to show them', () => {
+    const only = { text: 'grid.onlyUntradable', action: 'showUntradable' };
+    expect(emptyStateOf(dropsOnly('A', 'B'), filter())).toEqual(only);
+    // Поиск из одних пробелов поиском не считается.
+    expect(emptyStateOf(dropsOnly('A'), filter({ search: '  ' }))).toEqual(only);
+  });
+
+  it('keeps «nothing found» when a search, a type or «Show» hides the items too', () => {
+    const nothing = { text: 'grid.nothingFound', action: 'reset' };
+    expect(emptyStateOf(dropsOnly('A'), filter({ search: 'x' }))).toEqual(nothing);
+    expect(emptyStateOf(dropsOnly('A'), filter({ categories: ['Tool'] }))).toEqual(nothing);
+    expect(emptyStateOf(dropsOnly('A'), filter({ show: 'dupes' }))).toEqual(nothing);
+    // С переключателем «Непередаваемые» скрывать нечего: новый случай не нужен.
+    expect(emptyStateOf(dropsOnly('A'), filter({ untradable: true }))).toEqual(nothing);
+    // Не всё скрыто как дроп — это уже общий случай.
+    expect(emptyStateOf({ skins: [drop('A'), skin('B')], unreadable: [] }, filter())).toEqual(nothing);
+  });
+
+  it('puts «no stacks» ahead of the untradable case and keeps «empty inventory» first', () => {
+    expect(emptyStateOf(dropsOnly('A'), filter({ show: 'stacks' }))).toEqual({ text: 'grid.noStacks', action: 'showAll' });
+    expect(emptyStateOf(inventory(), filter())).toEqual({ text: 'grid.empty', action: null });
+  });
+
+  it('has texts for the untradable case in both languages', () => {
+    setLang('ru');
+    expect(t('grid.onlyUntradable')).toBe('Здесь только предметы, которые нельзя передать: дропы Twitch и подобные. Делить и собирать в них нечего.');
+    expect(t('grid.showUntradable')).toBe('Показать их');
+    setLang('en');
+    expect(t('grid.onlyUntradable')).toBe(
+      "Only items that can't be traded are here: Twitch drops and the like. There is nothing to split or combine in them.",
+    );
+    expect(t('grid.showUntradable')).toBe('Show them');
+  });
+});
+
+describe('untradable switch texts', () => {
+  it('names the checkbox, its hint and the line of the totals', () => {
+    setLang('ru');
+    expect(t('filters.untradable')).toBe('Непередаваемые');
+    expect(t('filters.untradableHint')).toBe('Дропы Twitch и другие предметы, которые нельзя передать. Делить и собирать в них нечего.');
+    expect(t('stats.untradable')).toBe('Нельзя передать');
+    setLang('en');
+    expect(t('filters.untradable')).toBe('Untradable');
+    expect(t('filters.untradableHint')).toBe(
+      "Twitch drops and other items that can't be traded. There is nothing to split or combine in them.",
+    );
+    expect(t('stats.untradable')).toBe('Untradable');
   });
 });
 

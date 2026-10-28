@@ -106,6 +106,12 @@ describe('layout', () => {
     expect(prop(rule(panelCss, '.queue'), 'overflow-y')).toBe('auto');
   });
 
+  it('keeps the long «Непередаваемые» label inside the filter column: smaller type, the count may wrap below', () => {
+    const long = rule(mainCss, '.opt.long');
+    expect(parseFloat(prop(long, 'font-size'))).toBeLessThanOrEqual(12);
+    expect(prop(long, 'flex-wrap')).toBe('wrap');
+  });
+
   it('makes the big picture smaller in a low window', () => {
     const low = media(panelCss, '(max-height: 700px)');
     expect(parseFloat(prop(rule(low, '.big'), 'height'))).toBeLessThan(parseFloat(prop(rule(panelCss, '.big'), 'height')));

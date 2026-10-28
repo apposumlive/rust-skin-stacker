@@ -5,7 +5,7 @@ import { api, asUiError } from '../api';
 import { h, icon, type Child } from '../dom';
 import { estimateSeconds, fmtDate, fmtDuration, fmtInt } from '../format';
 import { errorText, t, tn } from '../i18n';
-import { apartRecords, canCombine, clampCount, counts, hasStack, layoutOf, layoutText, splitCapacity } from '../model';
+import { apartRecords, canCombine, clampCount, hasStack, layoutOf, layoutText, splitCapacity } from '../model';
 import type { State } from '../store';
 import type { Inventory, Skin } from '../types';
 import { itemImage } from './item-image';
@@ -33,7 +33,7 @@ export function mainHeading(cls: string, text: string): HTMLElement {
 }
 
 export function hintView(inventory: Inventory): HTMLElement {
-  const allSingle = counts(inventory).stacks === 0;
+  const allSingle = !inventory.skins.some(hasStack);
   return panelView('hint', [
     h('div', { class: 'hint-icon' }, icon('hand-click')),
     mainHeading('plan-h', t('panel.hintTitle')),
