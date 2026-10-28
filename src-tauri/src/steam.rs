@@ -6,10 +6,12 @@ use std::pin::Pin;
 use std::sync::Arc;
 #[cfg(test)]
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use reqwest::header::CONTENT_TYPE;
 use serde_json::Value;
+use tokio::time::Instant;
 use url::{Url, form_urlencoded};
 
 use crate::token::Token;
@@ -22,6 +24,27 @@ pub const PAGE_SIZE: u32 = 500;
 pub const GET_RETRIES: u64 = 3;
 /// Дольше ждать по `Retry-After` не будем.
 pub const MAX_RETRY_AFTER: u64 = 60;
+/// Дольше одного запроса (вместе с телом ответа) не ждём.
+pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Общий срок одного GET вместе с повторами: запросы и ожидания между ними. Ожидание начинается, только если
+/// после него на запрос остаётся полный таймаут, поэтому срок не превышается. 120 с вмещают самое долгое
+/// ожидание по `Retry-After` (60 с) даже после запроса, ушедшего в таймаут, а при быстрых ответах — всю
+/// лестницу 5xx (10 + 20 + 30 с). Дольше ждать без человека незачем: окно предложит «Повторить».
+pub const GET_DEADLINE: Duration = Duration::from_secs(120);
+const _: () = assert!(
+    REQUEST_TIMEOUT.as_secs() + MAX_RETRY_AFTER + REQUEST_TIMEOUT.as_secs()
+        <= GET_DEADLINE.as_secs()
+);
+/// Как часто чтение смотрит на «Остановить» во время запроса и ожидания: обрыв — быстрее секунды.
+const STOP_POLL: Duration = Duration::from_millis(100);
+
+/// Чтение инвентаря видит «Остановить» и сообщает, когда Steam просит подождать.
+pub struct ReadControl<'a> {
+    /// «Остановить»: чтение бросает запрос в пути и ожидание и за следующей страницей не идёт.
+    pub stop: &'a AtomicBool,
+    /// Steam ответил 429: перед повтором ждём столько секунд. Окно показывает отсчёт.
+    pub on_wait: &'a (dyn Fn(u64) + Sync),
+}
 
 /// Пауза, которую тесты подменяют записью длительности.
 pub type SleepFn = Arc<dyn Fn(Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
@@ -48,6 +71,8 @@ pub enum SteamError {
     PagingLoop,
     #[error("the inventory has too many pages")]
     TooLarge,
+    #[error("the inventory read was stopped")]
+    Stopped,
 }
 
 #[derive(Clone)]
@@ -63,7 +88,7 @@ impl SteamClient {
         let http = reqwest::Client::builder()
             .user_agent(concat!("RustSkinStacker/", env!("CARGO_PKG_VERSION")))
             .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(30))
+            .timeout(REQUEST_TIMEOUT)
             .build()
             .expect("HTTP client");
         Self {
@@ -74,12 +99,14 @@ impl SteamClient {
     }
 
     /// Одна страница инвентаря Rust: объект `response` из ответа Steam.
-    /// Повторяется при 429, 5xx и сбое сети, не больше `GET_RETRIES` раз.
+    /// Повторяется при 429, 5xx и сбое сети, не больше `GET_RETRIES` раз и в срок `GET_DEADLINE`.
+    /// «Остановить» обрывает и запрос, и ожидание перед повтором.
     pub async fn inventory_page(
         &self,
         token: &Token,
         start_assetid: Option<&str>,
         language: &str,
+        control: &ReadControl<'_>,
     ) -> Result<Value, SteamError> {
         let mut params = vec![
             ("access_token", token.secret.expose().to_string()),
@@ -99,11 +126,18 @@ impl SteamClient {
         );
         let url = Url::parse_with_params(&address, &params).map_err(|_| SteamError::BadResponse)?;
         let mut attempt: u64 = 0;
+        // Сколько уже ушло на этот GET: запросы и ожидания.
+        let mut spent = Duration::ZERO;
         loop {
-            let outcome = match self.http.get(url.clone()).send().await {
-                Ok(resp) => read_json(resp).await,
-                Err(e) => Err(network(&e)),
+            let sent = Instant::now();
+            // Чтение в Steam ничего не меняет, поэтому запрос в пути можно бросить. `biased`: нажатие, сделанное
+            // раньше, не даёт запросу уйти.
+            let outcome = tokio::select! {
+                biased;
+                () = stop_pressed(control.stop) => return Err(SteamError::Stopped),
+                outcome = self.get_json(&url) => outcome,
             };
+            spent += sent.elapsed();
             let wait = match &outcome {
                 Err(SteamError::Network(_)) => Some(5 * (attempt + 1)),
                 Err(SteamError::RateLimited { retry_after }) => {
@@ -112,10 +146,14 @@ impl SteamClient {
                 Err(SteamError::Http(status)) if *status >= 500 => Some(10 * (attempt + 1)),
                 _ => None,
             };
-            match wait {
-                Some(secs) if attempt < GET_RETRIES => {
+            match wait.map(|secs| Duration::from_secs(secs.min(MAX_RETRY_AFTER))) {
+                Some(pause) if attempt < GET_RETRIES && retry_fits(spent, pause) => {
                     attempt += 1;
-                    (self.sleep)(Duration::from_secs(secs.min(MAX_RETRY_AFTER))).await;
+                    if matches!(outcome, Err(SteamError::RateLimited { .. })) {
+                        (control.on_wait)(pause.as_secs());
+                    }
+                    self.pause(pause, control.stop).await?;
+                    spent += pause;
                 }
                 _ => {
                     return outcome?
@@ -124,6 +162,23 @@ impl SteamClient {
                         .ok_or(SteamError::BadResponse);
                 }
             }
+        }
+    }
+
+    async fn get_json(&self, url: &Url) -> Result<Value, SteamError> {
+        match self.http.get(url.clone()).send().await {
+            Ok(resp) => read_json(resp).await,
+            Err(e) => Err(network(&e)),
+        }
+    }
+
+    /// Ожидание перед повтором GET, которое обрывает «Остановить». Если пауза кончилась раньше, чем опрос
+    /// заметил нажатие, повтор всё равно не уйдёт: запрос выше сначала смотрит на «Остановить».
+    async fn pause(&self, pause: Duration, stop: &AtomicBool) -> Result<(), SteamError> {
+        tokio::select! {
+            biased;
+            () = stop_pressed(stop) => Err(SteamError::Stopped),
+            () = (self.sleep)(pause) => Ok(()),
         }
     }
 
@@ -223,6 +278,18 @@ fn retry_after(resp: &reqwest::Response) -> Option<u64> {
     header_number::<u64>(resp, "retry-after").map(|s| s.min(MAX_RETRY_AFTER))
 }
 
+/// Помещаются ли в общий срок ожидание `pause` и полный таймаут запроса после него, если на GET уже ушло `spent`.
+fn retry_fits(spent: Duration, pause: Duration) -> bool {
+    spent + pause + REQUEST_TIMEOUT <= GET_DEADLINE
+}
+
+/// Заканчивается, когда нажали «Остановить».
+async fn stop_pressed(stop: &AtomicBool) {
+    while !stop.load(Ordering::SeqCst) {
+        tokio::time::sleep(STOP_POLL).await;
+    }
+}
+
 /// Только вид сбоя: в тексте ошибки reqwest есть URL с токеном.
 fn network(e: &reqwest::Error) -> SteamError {
     if e.is_timeout() {
@@ -280,6 +347,76 @@ mod tests {
         ResponseTemplate::new(200).set_body_json(json!({"response": {"total_inventory_count": 0}}))
     }
 
+    /// «Остановить» и ожидания по 429, о которых чтение сообщило окну.
+    #[derive(Default)]
+    struct Watch {
+        stop: Arc<AtomicBool>,
+        waits: Mutex<Vec<u64>>,
+    }
+
+    impl Watch {
+        async fn page(
+            &self,
+            client: &SteamClient,
+            start: Option<&str>,
+        ) -> Result<Value, SteamError> {
+            let on_wait = |seconds| self.waits.lock().unwrap().push(seconds);
+            let control = ReadControl {
+                stop: &self.stop,
+                on_wait: &on_wait,
+            };
+            client
+                .inventory_page(&test_token(), start, "english", &control)
+                .await
+        }
+
+        fn waits(&self) -> Vec<u64> {
+            self.waits.lock().unwrap().clone()
+        }
+    }
+
+    /// Первая страница, которую никто не останавливает.
+    async fn first_page(client: &SteamClient) -> Result<Value, SteamError> {
+        Watch::default().page(client, None).await
+    }
+
+    /// Пауза для тестов: записывает длительность, нажимает «Остановить» и сразу кончается — как настоящая пауза,
+    /// которая кончилась раньше, чем опрос заметил нажатие.
+    fn stopping_sleep(stop: &Arc<AtomicBool>) -> (SleepFn, Arc<Mutex<Vec<Duration>>>) {
+        let (record, slept) = recording_sleep();
+        let stop = stop.clone();
+        let sleep: SleepFn = Arc::new(move |d| {
+            let recorded = record(d);
+            let stop = stop.clone();
+            Box::pin(async move {
+                recorded.await;
+                stop.store(true, Ordering::SeqCst);
+            })
+        });
+        (sleep, slept)
+    }
+
+    async fn requests(server: &MockServer) -> usize {
+        server.received_requests().await.unwrap_or_default().len()
+    }
+
+    /// Нажимает «Остановить», как только `ready` скажет «пора» (ждёт не дольше 10 с). Возвращает момент нажатия.
+    async fn press_stop<F: Future<Output = bool>>(
+        stop: &AtomicBool,
+        ready: impl Fn() -> F,
+    ) -> Instant {
+        let wait = async {
+            while !ready().await {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(10), wait)
+            .await
+            .expect("the moment to press Stop never came");
+        stop.store(true, Ordering::SeqCst);
+        Instant::now()
+    }
+
     #[tokio::test]
     async fn inventory_page_sends_params_and_returns_response() {
         let (server, client, _) = setup().await;
@@ -297,10 +434,7 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        let page = client
-            .inventory_page(&test_token(), Some("42"), "english")
-            .await
-            .unwrap();
+        let page = Watch::default().page(&client, Some("42")).await.unwrap();
         assert_eq!(page["total_inventory_count"], 0);
     }
 
@@ -318,10 +452,7 @@ mod tests {
             .respond_with(empty_page())
             .mount(&server)
             .await;
-        client
-            .inventory_page(&test_token(), None, "english")
-            .await
-            .unwrap();
+        first_page(&client).await.unwrap();
         assert_eq!(secs(&slept), vec![2]);
     }
 
@@ -339,10 +470,7 @@ mod tests {
             .respond_with(empty_page())
             .mount(&server)
             .await;
-        client
-            .inventory_page(&test_token(), None, "english")
-            .await
-            .unwrap();
+        first_page(&client).await.unwrap();
         assert_eq!(secs(&slept), vec![60]);
     }
 
@@ -355,10 +483,7 @@ mod tests {
             .expect(4)
             .mount(&server)
             .await;
-        let err = client
-            .inventory_page(&test_token(), None, "english")
-            .await
-            .unwrap_err();
+        let err = first_page(&client).await.unwrap_err();
         assert_eq!(err, SteamError::Http(502));
         assert_eq!(secs(&slept), vec![10, 20, 30]);
     }
@@ -372,10 +497,7 @@ mod tests {
             .expect(1)
             .mount(&server)
             .await;
-        let err = client
-            .inventory_page(&test_token(), None, "english")
-            .await
-            .unwrap_err();
+        let err = first_page(&client).await.unwrap_err();
         assert_eq!(err, SteamError::Auth(401));
         assert!(secs(&slept).is_empty());
     }
@@ -388,10 +510,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
             .mount(&server)
             .await;
-        let err = client
-            .inventory_page(&test_token(), None, "english")
-            .await
-            .unwrap_err();
+        let err = first_page(&client).await.unwrap_err();
         assert_eq!(err, SteamError::BadResponse);
     }
 
@@ -400,12 +519,147 @@ mod tests {
     async fn inventory_page_retries_network_errors() {
         let (sleep, slept) = recording_sleep();
         let client = SteamClient::new(DEAD, sleep);
-        let err = client
-            .inventory_page(&test_token(), None, "english")
-            .await
-            .unwrap_err();
+        let err = first_page(&client).await.unwrap_err();
         assert!(matches!(err, SteamError::Network(_)));
         assert_eq!(secs(&slept), vec![5, 10, 15]);
+    }
+
+    /// Окну сообщается только ожидание по 429: при 5xx Steam подождать не просил.
+    #[tokio::test]
+    async fn only_rate_limit_waits_are_reported_to_the_window() {
+        let (server, client, slept) = setup().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "2"))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(502))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(empty_page())
+            .mount(&server)
+            .await;
+        let watch = Watch::default();
+        watch.page(&client, None).await.unwrap();
+        assert_eq!(secs(&slept), vec![2, 20]);
+        assert_eq!(watch.waits(), vec![2]);
+    }
+
+    #[test]
+    fn a_retry_needs_room_for_the_wait_and_a_full_request() {
+        let s = Duration::from_secs;
+        // Самое долгое ожидание помещается даже после запроса, ушедшего в таймаут, но не секундой позже.
+        assert!(retry_fits(s(30), s(60)));
+        assert!(!retry_fits(s(31), s(60)));
+        // Время запросов считается: после двух таймаутов и ожиданий 5 и 10 с на третье ожидание места нет.
+        assert!(retry_fits(s(30 + 5 + 30), s(10)));
+        assert!(!retry_fits(s(30 + 5 + 30 + 10 + 30), s(15)));
+        // При быстрых ответах помещается вся лестница 5xx.
+        assert!(retry_fits(s(10 + 20), s(30)));
+    }
+
+    /// Второе ожидание в 60 с и таймаут запроса после него в общий срок не помещаются:
+    /// чтение отдаёт ошибку, не начиная ожидания.
+    #[tokio::test]
+    async fn retries_end_at_the_deadline() {
+        let (server, client, slept) = setup().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "60"))
+            .expect(2)
+            .mount(&server)
+            .await;
+        let watch = Watch::default();
+        let err = watch.page(&client, None).await.unwrap_err();
+        assert_eq!(
+            err,
+            SteamError::RateLimited {
+                retry_after: Some(60)
+            }
+        );
+        assert_eq!(secs(&slept), vec![60]);
+        assert_eq!(watch.waits(), vec![60]);
+    }
+
+    #[tokio::test]
+    async fn stopped_read_sends_nothing() {
+        let (server, client, _) = setup().await;
+        Mock::given(method("GET"))
+            .respond_with(empty_page())
+            .expect(0)
+            .mount(&server)
+            .await;
+        let watch = Watch::default();
+        watch.stop.store(true, Ordering::SeqCst);
+        let err = watch.page(&client, None).await.unwrap_err();
+        assert_eq!(err, SteamError::Stopped);
+    }
+
+    /// «Остановить» нажали во время ожидания перед повтором: повторного запроса нет.
+    #[tokio::test]
+    async fn stop_during_a_retry_wait_sends_no_retry() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "30"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let watch = Watch::default();
+        let (sleep, slept) = stopping_sleep(&watch.stop);
+        let client = SteamClient::new(&server.uri(), sleep);
+        let err = watch.page(&client, None).await.unwrap_err();
+        assert_eq!(err, SteamError::Stopped);
+        assert_eq!(secs(&slept), vec![30]);
+    }
+
+    /// Настоящее ожидание в 30 с: «Остановить» обрывает его быстрее секунды.
+    #[tokio::test]
+    async fn stop_ends_a_real_retry_wait_within_a_second() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(429).insert_header("Retry-After", "30"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = SteamClient::new(&server.uri(), tokio_sleep());
+        let watch = Watch::default();
+        let (result, pressed) = tokio::join!(
+            watch.page(&client, None),
+            press_stop(&watch.stop, || async { !watch.waits().is_empty() })
+        );
+        let took = pressed.elapsed();
+        assert_eq!(result.unwrap_err(), SteamError::Stopped);
+        assert!(took < Duration::from_secs(1), "{took:?}");
+    }
+
+    /// Ответ задерживается на 5 с: «Остановить» бросает запрос в пути быстрее секунды.
+    #[tokio::test]
+    async fn stop_drops_the_request_in_flight_within_a_second() {
+        let (server, client, slept) = setup().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(empty_page().set_delay(Duration::from_secs(5)))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let watch = Watch::default();
+        let server = &server;
+        let (result, pressed) = tokio::join!(
+            watch.page(&client, None),
+            press_stop(&watch.stop, || async move { requests(server).await > 0 })
+        );
+        let took = pressed.elapsed();
+        assert_eq!(result.unwrap_err(), SteamError::Stopped);
+        assert!(took < Duration::from_secs(1), "{took:?}");
+        assert!(secs(&slept).is_empty());
     }
 
     #[tokio::test]
@@ -539,10 +793,7 @@ mod tests {
     async fn get_does_not_follow_redirects() {
         let (server, client, slept) = setup().await;
         mount_redirect(&server, "GET", INV, 302).await;
-        let err = client
-            .inventory_page(&test_token(), None, "english")
-            .await
-            .unwrap_err();
+        let err = first_page(&client).await.unwrap_err();
         assert_eq!(err, SteamError::Http(302));
         assert!(secs(&slept).is_empty());
         server.verify().await;
@@ -581,6 +832,7 @@ mod tests {
             SteamError::BadResponse,
             SteamError::PagingLoop,
             SteamError::TooLarge,
+            SteamError::Stopped,
         ];
         for e in errors {
             let shown = format!("{e} {e:?}");

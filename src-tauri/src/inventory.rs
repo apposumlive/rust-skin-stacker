@@ -3,11 +3,12 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::steam::{SteamClient, SteamError};
+use crate::steam::{ReadControl, SteamClient, SteamError};
 use crate::token::Token;
 
 /// 100 страниц по 500 записей — с запасом для инвентаря на тысячи предметов.
@@ -93,10 +94,11 @@ pub async fn load(
     client: &SteamClient,
     token: &Token,
     language: &str,
+    control: &ReadControl<'_>,
 ) -> Result<Inventory, SteamError> {
-    let pages = collect_pages(|start| async move {
+    let pages = collect_pages(control.stop, |start| async move {
         client
-            .inventory_page(token, start.as_deref(), language)
+            .inventory_page(token, start.as_deref(), language, control)
             .await
     })
     .await?;
@@ -104,7 +106,11 @@ pub async fn load(
 }
 
 /// Страницы подряд по курсору `last_assetid`, пока Steam отвечает `more_items`.
-pub async fn collect_pages<F, Fut>(mut get_page: F) -> Result<Vec<Value>, SteamError>
+/// «Остановить» проверяется перед каждой страницей.
+pub async fn collect_pages<F, Fut>(
+    stop: &AtomicBool,
+    mut get_page: F,
+) -> Result<Vec<Value>, SteamError>
 where
     F: FnMut(Option<String>) -> Fut,
     Fut: Future<Output = Result<Value, SteamError>>,
@@ -113,6 +119,9 @@ where
     let mut start = None;
     let mut seen = HashSet::new();
     for _ in 0..MAX_PAGES {
+        if stop.load(Ordering::SeqCst) {
+            return Err(SteamError::Stopped);
+        }
         let page = get_page(start.take()).await?;
         let Some(obj) = page.as_object() else {
             return Err(SteamError::BadResponse);
@@ -365,6 +374,11 @@ mod tests {
         json!({"assets": assets, "descriptions": descriptions, "total_inventory_count": 0})
     }
 
+    /// «Остановить» не нажата.
+    fn no_stop() -> AtomicBool {
+        AtomicBool::new(false)
+    }
+
     fn one_skin(inv: &Inventory) -> &Skin {
         assert_eq!(inv.skins.len(), 1, "{inv:?}");
         &inv.skins[0]
@@ -546,7 +560,7 @@ mod tests {
             Ok(json!({"assets": [], "total_inventory_count": 0})),
         ]);
         let mut starts = Vec::new();
-        let pages = collect_pages(|start| {
+        let pages = collect_pages(&no_stop(), |start| {
             starts.push(start);
             ready(replies.pop_front().unwrap())
         })
@@ -558,7 +572,7 @@ mod tests {
 
     #[tokio::test]
     async fn repeated_cursor_is_a_loop() {
-        let err = collect_pages(|_| {
+        let err = collect_pages(&no_stop(), |_| {
             ready(Ok(
                 json!({"assets": [], "more_items": true, "last_assetid": "10"}),
             ))
@@ -570,9 +584,11 @@ mod tests {
 
     #[tokio::test]
     async fn more_items_without_cursor_is_bad() {
-        let err = collect_pages(|_| ready(Ok(json!({"assets": [], "more_items": true}))))
-            .await
-            .unwrap_err();
+        let err = collect_pages(&no_stop(), |_| {
+            ready(Ok(json!({"assets": [], "more_items": true})))
+        })
+        .await
+        .unwrap_err();
         assert_eq!(err, SteamError::BadResponse);
     }
 
@@ -583,7 +599,9 @@ mod tests {
             json!({}),
             json!({"assets": "x", "total_inventory_count": 1}),
         ] {
-            let err = collect_pages(|_| ready(Ok(bad.clone()))).await.unwrap_err();
+            let err = collect_pages(&no_stop(), |_| ready(Ok(bad.clone())))
+                .await
+                .unwrap_err();
             assert_eq!(err, SteamError::BadResponse, "{bad}");
         }
     }
@@ -591,7 +609,7 @@ mod tests {
     #[tokio::test]
     async fn endless_inventory_is_too_large() {
         let mut n = 0;
-        let err = collect_pages(|_| {
+        let err = collect_pages(&no_stop(), |_| {
             n += 1;
             ready(Ok(
                 json!({"assets": [], "more_items": true, "last_assetid": n.to_string()}),
@@ -605,10 +623,41 @@ mod tests {
 
     #[tokio::test]
     async fn steam_error_is_passed_through() {
-        let err = collect_pages(|_| ready(Err(SteamError::Auth(401))))
+        let err = collect_pages(&no_stop(), |_| ready(Err(SteamError::Auth(401))))
             .await
             .unwrap_err();
         assert_eq!(err, SteamError::Auth(401));
+    }
+
+    /// «Остановить» нажали, пока шла первая страница: за второй не идём.
+    #[tokio::test]
+    async fn stop_between_pages_asks_for_no_more() {
+        let stop = AtomicBool::new(false);
+        let mut calls = 0;
+        let err = collect_pages(&stop, |_| {
+            calls += 1;
+            stop.store(true, Ordering::SeqCst);
+            ready(Ok(
+                json!({"assets": [], "more_items": true, "last_assetid": "10"}),
+            ))
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(err, SteamError::Stopped);
+        assert_eq!(calls, 1);
+    }
+
+    #[tokio::test]
+    async fn stopped_read_asks_for_no_page() {
+        let mut calls = 0;
+        let err = collect_pages(&AtomicBool::new(true), |_| {
+            calls += 1;
+            ready(Ok(json!({"assets": [], "total_inventory_count": 0})))
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(err, SteamError::Stopped);
+        assert_eq!(calls, 0);
     }
 
     #[test]
