@@ -31,6 +31,11 @@ export class FakeEl {
   disabled = false;
   value = '';
   isConnected = true;
+  /** Родитель: нужен `replaceWith`. Ставят `append` и `replaceChildren`. */
+  parent: FakeEl | null = null;
+  /** Как у `<img>`: тест выставляет сам, если нужна «уже готовая» картинка. */
+  complete = false;
+  naturalWidth = 0;
 
   constructor(public tag: string) {}
 
@@ -40,6 +45,15 @@ export class FakeEl {
 
   get className(): string {
     return [...this.classes].join(' ');
+  }
+
+  /** `img.src` и атрибут `src` — одно и то же. */
+  get src(): string {
+    return this.attrs.get('src') ?? '';
+  }
+
+  set src(value: string) {
+    this.attrs.set('src', value);
   }
 
   setAttribute(name: string, value: string): void {
@@ -67,11 +81,22 @@ export class FakeEl {
   }
 
   append(...nodes: Array<FakeEl | FakeText>): void {
+    for (const node of nodes) if (node instanceof FakeEl) node.parent = this;
     this.children.push(...nodes);
   }
 
   replaceChildren(...nodes: Array<FakeEl | FakeText | string>): void {
     this.children = nodes.map((node) => (typeof node === 'string' ? new FakeText(node) : node));
+    for (const node of this.children) if (node instanceof FakeEl) node.parent = this;
+  }
+
+  /** Как в DOM: без родителя ничего не делает. */
+  replaceWith(node: FakeEl): void {
+    const parent = this.parent;
+    if (!parent) return;
+    parent.children = parent.children.map((child) => (child === this ? node : child));
+    node.parent = parent;
+    this.parent = null;
   }
 
   get firstElementChild(): FakeEl | null {

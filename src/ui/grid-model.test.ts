@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { setLang, t } from '../i18n';
 import { defaultFilter, type Filter } from '../model';
 import type { Inventory, Plan, Skin } from '../types';
-import { cardNote, currentKey, emptyStateOf, gridKey, gridMeta, processedKeys } from './grid-model';
+import { cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys } from './grid-model';
 
 const skin = (key: string): Skin => ({ key, name: key, icon: null, category: null, total: 1, records: [] });
 const inventory = (...keys: string[]): Inventory => ({ skins: keys.map(skin), unreadable: [] });
@@ -148,5 +148,27 @@ describe('card note during a run', () => {
     expect(t('card.processed')).toBe('обработано');
     setLang('en');
     expect(t('card.processed')).toBe('processed');
+  });
+});
+
+describe('icons to prefetch', () => {
+  const withIcon = (key: string, icon: string | null): Skin => ({ ...skin(key), icon });
+
+  it('takes the hashes in grid order, starting right after the last drawn card', () => {
+    const list = [withIcon('a', 'ha'), withIcon('b', 'hb'), withIcon('c', 'hc'), withIcon('d', 'hd')];
+    expect(iconsAfter(list, 0)).toEqual(['ha', 'hb', 'hc', 'hd']);
+    expect(iconsAfter(list, 2)).toEqual(['hc', 'hd']);
+  });
+
+  it('skips skins without a picture', () => {
+    const list = [withIcon('a', 'ha'), withIcon('b', null), withIcon('c', 'hc')];
+    expect(iconsAfter(list, 0)).toEqual(['ha', 'hc']);
+  });
+
+  it('gives nothing when everything is already drawn', () => {
+    const list = [withIcon('a', 'ha'), withIcon('b', 'hb')];
+    expect(iconsAfter(list, 2)).toEqual([]);
+    expect(iconsAfter(list, 5)).toEqual([]);
+    expect(iconsAfter([], 0)).toEqual([]);
   });
 });

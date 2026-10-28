@@ -3,14 +3,15 @@
 import { clearSelection, showPlan } from '../actions';
 import { api, asUiError } from '../api';
 import { h, icon, type Child } from '../dom';
-import { estimateSeconds, fmtDate, fmtDuration, fmtInt, iconUrl } from '../format';
+import { estimateSeconds, fmtDate, fmtDuration, fmtInt } from '../format';
 import { errorText, t, tn } from '../i18n';
 import { apartRecords, canCombine, clampCount, counts, hasStack, layoutOf, layoutText, splitCapacity } from '../model';
 import type { State } from '../store';
 import type { Inventory, Skin } from '../types';
+import { itemImage } from './item-image';
 
 export function picture(skin: Skin | undefined, size: number, cls: string): HTMLElement {
-  return h('div', { class: cls }, skin?.icon ? h('img', { src: iconUrl(skin.icon, size), alt: '' }) : icon('photo-off'));
+  return h('div', { class: cls }, itemImage(skin?.icon ?? null, size));
 }
 
 /**
@@ -213,7 +214,7 @@ export function multiView(skins: Skin[]): HTMLElement {
       h(
         'div',
         { class: 'thumbs' },
-        ...shown.map((s) => h('div', { class: 'thumb', title: s.name }, s.icon ? h('img', { src: iconUrl(s.icon, 96), alt: '' }) : icon('photo-off'))),
+        ...shown.map((s) => h('div', { class: 'thumb', title: s.name }, itemImage(s.icon, 96))),
         skins.length > shown.length ? h('div', { class: 'thumb' }, t('multi.more', { count: fmtInt(skins.length - shown.length) })) : null,
       ),
       mainHeading('plan-h', t('multi.title', { items: tn('multi.items', skins.length), pcs: t('card.total', { count: fmtInt(pcs) }) })),

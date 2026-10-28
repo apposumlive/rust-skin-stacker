@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { columnsFor, GAP, MIN_CARD_WIDTH } from '../ui/virtual';
+import baseCss from './base.css?raw';
 import loginCss from './login.css?raw';
 import mainCss from './main.css?raw';
 import panelCss from './panel.css?raw';
@@ -134,5 +135,34 @@ describe('layout', () => {
 
   it('keeps the token field to about three lines', () => {
     expect(parseFloat(prop(rule(loginCss, '.login-field'), 'min-height'))).toBeLessThanOrEqual(80);
+  });
+});
+
+describe('item pictures', () => {
+  const pictures = ['.imgbox img', '.big img', '.thumb img', '.qimg img'];
+
+  it('hides a picture until it has loaded, then fades it in over 200 ms', () => {
+    for (const selector of pictures) {
+      const before = rule(baseCss, selector);
+      expect(prop(before, 'opacity'), selector).toBe('0');
+      expect(prop(before, 'transition'), selector).toBe('opacity 0.2s var(--ease)');
+      expect(prop(rule(baseCss, `${selector.replace(/ img$/, '')} img.loaded`), 'opacity'), selector).toBe('1');
+    }
+  });
+
+  it('shows the picture at once, without a transition, when motion is reduced', () => {
+    const reduced = media(baseCss, '(prefers-reduced-motion: reduce)');
+    expect(prop(rule(reduced, '*'), 'transition')).toMatch(/^none/);
+    for (const selector of pictures) expect(prop(rule(reduced, selector), 'opacity'), selector).toBe('1');
+  });
+
+  it('keeps the tile under the picture', () => {
+    const tiles: Array<[string, string]> = [
+      [mainCss, '.imgbox'],
+      [panelCss, '.big'],
+      [panelCss, '.thumb'],
+      [panelCss, '.qimg'],
+    ];
+    for (const [css, selector] of tiles) expect(prop(rule(css, selector), 'background'), selector).toBe('var(--img)');
   });
 });

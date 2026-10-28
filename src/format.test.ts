@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from './i18n';
-import { estimateSeconds, fmtDuration, fmtInt, fmtSeconds, fmtTimeLeft, iconUrl, remainingSeconds } from './format';
+import { estimateSeconds, fmtDuration, fmtInt, fmtSeconds, fmtTimeLeft, ICON_HOSTS, iconUrl, remainingSeconds } from './format';
 
 describe('format', () => {
   beforeEach(() => setLang('ru'));
@@ -30,8 +30,22 @@ describe('format', () => {
     expect(fmtTimeLeft(now, now)).toBe('истёк');
   });
 
-  it('builds icon urls on the Steam CDN', () => {
-    expect(iconUrl('abc_DEF-1', 128)).toBe('https://community.akamai.steamstatic.com/economy/image/abc_DEF-1/128fx128f');
+  it('has two CDN hosts: Fastly first, Akamai as the fallback', () => {
+    expect(ICON_HOSTS).toEqual([
+      'https://community.fastly.steamstatic.com/economy/image/',
+      'https://community.akamai.steamstatic.com/economy/image/',
+    ]);
+  });
+
+  it('builds icon urls on the Steam CDN, Fastly by default', () => {
+    expect(iconUrl('abc_DEF-1', 128)).toBe('https://community.fastly.steamstatic.com/economy/image/abc_DEF-1/128fx128f');
+    expect(iconUrl('abc_DEF-1', 128, 0)).toBe('https://community.fastly.steamstatic.com/economy/image/abc_DEF-1/128fx128f');
+    expect(iconUrl('abc_DEF-1', 96, 1)).toBe('https://community.akamai.steamstatic.com/economy/image/abc_DEF-1/96fx96f');
+  });
+
+  it('encodes the hash in the icon url', () => {
+    expect(iconUrl('a/b c?d', 64, 0)).toBe('https://community.fastly.steamstatic.com/economy/image/a%2Fb%20c%3Fd/64fx64f');
+    expect(iconUrl('a/b c?d', 64, 1)).toBe('https://community.akamai.steamstatic.com/economy/image/a%2Fb%20c%3Fd/64fx64f');
   });
 
   it('formats seconds with one decimal', () => {
