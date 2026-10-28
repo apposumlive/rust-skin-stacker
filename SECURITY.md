@@ -9,7 +9,7 @@ Never send your Steam token, the token page or cookies — not in issues and not
 ## What the app does with the token
 
 - The token is kept only in the memory of the app's Rust core. It is never written to disk and never sent back to the window.
-- The core talks only to `api.steampowered.com`. The window loads only item pictures from `community.akamai.steamstatic.com`; everything else is blocked by the Content Security Policy.
+- The core talks only to `api.steampowered.com`. The window loads only item pictures from `community.fastly.steamstatic.com` (with `community.akamai.steamstatic.com` as the fallback address); everything else is blocked by the Content Security Policy.
 - The window can open exactly one address in your browser: the Steam token page.
 - There is no telemetry, no auto-update and no third-party server.
 
@@ -30,7 +30,7 @@ Fixes go into the latest release only.
 ## Что приложение делает с токеном
 
 - Токен хранится только в памяти Rust-ядра приложения. На диск он не пишется и обратно в окно не передаётся.
-- Ядро ходит только на `api.steampowered.com`. Окно загружает только картинки предметов с `community.akamai.steamstatic.com`, остальное запрещено политикой безопасности (CSP).
+- Ядро ходит только на `api.steampowered.com`. Окно загружает только картинки предметов с `community.fastly.steamstatic.com` (запасной адрес — `community.akamai.steamstatic.com`), остальное запрещено политикой безопасности (CSP).
 - Окно может открыть в браузере ровно один адрес — страницу токена Steam.
 - Телеметрии, автообновления и сторонних серверов нет.
 
