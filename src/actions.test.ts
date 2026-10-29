@@ -83,6 +83,7 @@ function freshState(over: Partial<State> = {}): void {
     inventory: inv('A', 'B'),
     loading: false,
     loadWaitUntil: null,
+    loadProgress: null,
     loadStopping: false,
     error: null,
     tokenExpired: false,
@@ -226,6 +227,29 @@ describe('runPlan', () => {
     await done;
     emit({ kind: 'request', done: 3, total: 4, errors: 0, key: 'B' });
     expect(getState().panel.kind).toBe('result');
+  });
+
+  it('leaves the running view as it is on a page of the read before or after the run', async () => {
+    let emit: (p: Progress) => void = () => {};
+    const run = deferred<StartResult>();
+    useApi(
+      fakeApi({
+        onProgress: async (cb) => {
+          emit = cb;
+          return () => {};
+        },
+        start: () => run.promise,
+      }),
+    );
+    const done = runPlan(plan);
+    await tick();
+    emit({ kind: 'waiting', seconds: 10 });
+    const before = running();
+    emit({ kind: 'reading', read: 500, total: 1234 });
+    expect(getState().panel).toBe(before);
+    expect(running().waitUntil).toBe(before.waitUntil);
+    run.resolve(finished());
+    await done;
   });
 
   it('collects the processed keys: A is processed when the key turns to B, the last one on the final event', async () => {
@@ -420,6 +444,7 @@ describe('a result that arrives after «Forget token»', () => {
     inventory: null,
     loading: false,
     loadWaitUntil: null,
+    loadProgress: null,
     loadStopping: false,
     selected: [],
     panel: { kind: 'selection' },
@@ -556,7 +581,15 @@ describe('a result that arrives after «Forget token»', () => {
 
 describe('forgetToken', () => {
   it('resets the window to the login screen', async () => {
-    setState({ selected: ['A'], anchor: 'A', tokenExpired: true, error: { code: 'network', status: null }, menuOpen: true, settingsOpen: true });
+    setState({
+      selected: ['A'],
+      anchor: 'A',
+      tokenExpired: true,
+      error: { code: 'network', status: null },
+      menuOpen: true,
+      settingsOpen: true,
+      loadProgress: { read: 500, total: 1234 },
+    });
     await forgetToken();
     expect(getState()).toMatchObject({
       screen: 'login',
@@ -564,6 +597,7 @@ describe('forgetToken', () => {
       inventory: null,
       loading: false,
       loadWaitUntil: null,
+      loadProgress: null,
       loadStopping: false,
       selected: [],
       anchor: null,
@@ -731,6 +765,91 @@ describe('loadInventory progress', () => {
     read.reject({ code: 'network' });
     await done;
     expect(getState()).toMatchObject({ loading: false, loadWaitUntil: null, loadStopping: false, error: { code: 'network', status: null } });
+  });
+
+  it('shows the pages read and drops the wait: a page came, so the wait is over', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    expect(getState().loadProgress).toBeNull();
+    emit({ kind: 'waiting', seconds: 10 });
+    emit({ kind: 'reading', read: 500, total: 1234 });
+    expect(getState()).toMatchObject({ loadProgress: { read: 500, total: 1234 }, loadWaitUntil: null });
+    emit({ kind: 'reading', read: 1000, total: null });
+    expect(getState().loadProgress).toEqual({ read: 1000, total: null });
+    read.resolve(inv('A'));
+    await done;
+    expect(getState()).toMatchObject({ loading: false, loadProgress: null });
+  });
+
+  it('drops the progress when the read fails', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    emit({ kind: 'reading', read: 500, total: 1234 });
+    read.reject({ code: 'network' });
+    await done;
+    expect(getState()).toMatchObject({ loading: false, loadProgress: null, error: { code: 'network', status: null } });
+  });
+
+  it('starts every read with no progress left from the previous one', async () => {
+    setState({ loadProgress: { read: 500, total: 1234 } });
+    const read = reading();
+    const done = loadInventory();
+    expect(getState()).toMatchObject({ loading: true, loadProgress: null });
+    read.resolve(inv('A'));
+    await done;
+  });
+
+  it('ignores a page that comes after the read ended', async () => {
+    const read = reading();
+    const done = loadInventory();
+    await tick();
+    read.resolve(inv('A'));
+    await done;
+    emit({ kind: 'reading', read: 500, total: 1234 });
+    expect(getState().loadProgress).toBeNull();
+  });
+
+  it('ignores a page that belongs to the read of an old session', async () => {
+    const first = reading();
+    const firstDone = loadInventory();
+    await tick();
+    const old = emit;
+    await forgetToken();
+    setState({ screen: 'main' });
+    const second = reading();
+    const done = loadInventory();
+    await tick();
+    old({ kind: 'reading', read: 500, total: 1234 });
+    expect(getState().loadProgress).toBeNull();
+    emit({ kind: 'reading', read: 7, total: 9 });
+    expect(getState().loadProgress).toEqual({ read: 7, total: 9 });
+    second.resolve(inv('A'));
+    await done;
+    first.resolve(inv('OLD'));
+    await firstDone;
+  });
+
+  it('leaves the pages to the running view while a run is going', async () => {
+    const listeners: Array<(p: Progress) => void> = [];
+    const read = reading({
+      start: () => new Promise<StartResult>(() => {}),
+      onProgress: async (cb) => {
+        listeners.push(cb);
+        return unlisten;
+      },
+    });
+    void runPlan(plan);
+    await tick();
+    const done = loadInventory();
+    await tick();
+    const before = running();
+    for (const listener of listeners) listener({ kind: 'reading', read: 500, total: 1234 });
+    expect(getState().loadProgress).toBeNull();
+    expect(getState().panel).toBe(before);
+    read.resolve(inv('A'));
+    await done;
   });
 
   it('ignores the request events: only the wait is shown', async () => {
@@ -1341,9 +1460,9 @@ describe('signIn', () => {
   });
 
   it('opens the main screen with a clean state', () => {
-    setState({ tokenExpired: true, error: { code: 'network', status: null } });
+    setState({ tokenExpired: true, error: { code: 'network', status: null }, loadProgress: { read: 500, total: 1234 } });
     signIn(token);
-    expect(getState()).toMatchObject({ screen: 'main', token, inventory: null, loading: false, tokenExpired: false, error: null });
+    expect(getState()).toMatchObject({ screen: 'main', token, inventory: null, loading: false, loadProgress: null, tokenExpired: false, error: null });
   });
 
   it('drops a stale noToken from a read the core cut off when the new token came', async () => {

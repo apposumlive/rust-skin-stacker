@@ -17,6 +17,7 @@ function stateOf(over: Partial<State> = {}): State {
     inventory,
     loading: false,
     loadWaitUntil: null,
+    loadProgress: null,
     loadStopping: false,
     error: null,
     tokenExpired: false,

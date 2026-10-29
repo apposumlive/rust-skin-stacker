@@ -45,14 +45,18 @@ export function adoptInventory(inventory: Inventory): Pick<State, 'inventory' | 
 /** `keepPanel` — не закрывать открытый вид (перечитывание после смены языка). Иначе панель возвращается к выбору. */
 export async function loadInventory(options: { keepPanel?: boolean } = {}): Promise<void> {
   const mine = session;
-  setState({ loading: true, loadWaitUntil: null, loadStopping: false, error: null });
+  setState({ loading: true, loadWaitUntil: null, loadProgress: null, loadStopping: false, error: null });
   let unlisten: (() => void) | null = null;
   try {
-    // Ожидание по 429 во время запуска показывает «Ход» (его ведёт runPlan), здесь — только чтение без запуска.
+    // Ожидание по 429 во время запуска показывает «Ход» (его ведёт runPlan). Здесь ожидание и прочитанные страницы —
+    // только при чтении без запуска.
     unlisten = await api.onProgress((progress) => {
-      if (mine !== session || progress.kind !== 'waiting') return;
+      if (mine !== session || progress.kind === 'request') return;
       const s = getState();
-      if (s.loading && s.panel.kind !== 'running') setState({ loadWaitUntil: Date.now() + progress.seconds * 1000 });
+      if (!s.loading || s.panel.kind === 'running') return;
+      // Страница пришла — значит, ожидание кончилось.
+      if (progress.kind === 'reading') setState({ loadProgress: { read: progress.read, total: progress.total }, loadWaitUntil: null });
+      else setState({ loadWaitUntil: Date.now() + progress.seconds * 1000 });
     });
     if (mine !== session) return;
     const inventory = await api.loadInventory(getState().lang);
@@ -62,12 +66,13 @@ export async function loadInventory(options: { keepPanel?: boolean } = {}): Prom
       ...adoptInventory(inventory),
       loading: false,
       loadWaitUntil: null,
+      loadProgress: null,
       loadStopping: false,
       panel: panel.kind === 'running' || options.keepPanel ? panel : { kind: 'selection' },
     });
   } catch (e) {
     if (mine !== session) return;
-    setState({ loading: false, loadWaitUntil: null, loadStopping: false });
+    setState({ loading: false, loadWaitUntil: null, loadProgress: null, loadStopping: false });
     showError(asUiError(e));
   } finally {
     unlisten?.();
@@ -136,7 +141,7 @@ export async function runPlan(plan: Plan): Promise<void> {
       onProgress(progress);
       // «Остановить», нажатая, пока start шёл к ядру, стёрта началом запуска. Первое событие значит, что запуск
       // в ядре начался: повторяем просьбу один раз, и она сработает после текущего запроса. Первым может прийти
-      // и `waiting` чтения перед запуском: повтор тогда обрывает это чтение, и это правильно.
+      // и `waiting` или `reading` чтения перед запуском: повтор тогда обрывает это чтение, и это правильно.
       const panel = getState().panel;
       if (resend && panel.kind === 'running' && panel.stopping) sendStop(mine);
     });
@@ -198,9 +203,10 @@ function onProgress(progress: Progress): void {
     // сработало. Дальше идёт чтение для сверки, и оно обрывается тем же «Остановить»: кнопка снова должна быть активна.
     const stopping = key === '' ? false : panel.stopping;
     setState({ panel: { ...panel, done, total, errors, key, processed, waitUntil: null, stopping } });
-  } else {
+  } else if (progress.kind === 'waiting') {
     setState({ panel: { ...panel, waitUntil: Date.now() + progress.seconds * 1000 } });
   }
+  // `reading` — страница чтения перед запуском или после него: «Ход» её не показывает.
 }
 
 /** Просит ядро остановиться. Не вышло — «Остановить» снова доступна, ошибка видна. */
@@ -256,6 +262,7 @@ export function signIn(token: TokenInfo): void {
     inventory: null,
     loading: false,
     loadWaitUntil: null,
+    loadProgress: null,
     loadStopping: false,
     selected: [],
     anchor: null,
@@ -286,6 +293,7 @@ export async function forgetToken(): Promise<void> {
     inventory: null,
     loading: false,
     loadWaitUntil: null,
+    loadProgress: null,
     loadStopping: false,
     selected: [],
     anchor: null,

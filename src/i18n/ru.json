@@ -185,6 +185,8 @@
   "run.browse": "Сетку можно листать, пока идёт операция.",
 
   "load.stopping": "Останавливаю…",
+  "load.progress": "Записей прочитано: {read} из {total}",
+  "load.progressCount": "Записей прочитано: {read}",
 
   "result.done": "Готово",
   "result.stopped": "Остановлено",

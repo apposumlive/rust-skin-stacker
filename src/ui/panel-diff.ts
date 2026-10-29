@@ -13,6 +13,7 @@ export interface Shown {
   delay: number;
   loading: boolean;
   loadWaitUntil: number | null;
+  loadProgress: State['loadProgress'];
   loadStopping: boolean;
 }
 
@@ -26,6 +27,7 @@ export function shownOf(state: State): Shown {
     delay: state.settings.delayMs,
     loading: state.loading,
     loadWaitUntil: state.loadWaitUntil,
+    loadProgress: state.loadProgress,
     loadStopping: state.loadStopping,
   };
 }
@@ -43,9 +45,10 @@ export function panelStep(prev: Shown | null, next: Shown): PanelStep {
   if (prev.panel.kind === 'running' && next.panel.kind === 'running' && prev.panel.plan === next.panel.plan && prev.inventory && next.inventory) {
     return prev.panel === next.panel && prev.inventory === next.inventory && prev.delay === next.delay ? 'keep' : 'patch';
   }
-  // Чтение без запуска: вид читает только ожидание и «Остановить»; выбор, панель и инвентарь под ним не видны.
+  // Чтение без запуска: вид читает только ожидание, прочитанное и «Остановить»; выбор, панель и инвентарь под ним не видны.
   if (showsLoad(prev) && showsLoad(next)) {
-    return prev.loadWaitUntil === next.loadWaitUntil && prev.loadStopping === next.loadStopping ? 'keep' : 'patch';
+    const same = prev.loadWaitUntil === next.loadWaitUntil && prev.loadProgress === next.loadProgress && prev.loadStopping === next.loadStopping;
+    return same ? 'keep' : 'patch';
   }
   return (Object.keys(next) as (keyof Shown)[]).every((k) => prev[k] === next[k]) ? 'keep' : 'rebuild';
 }

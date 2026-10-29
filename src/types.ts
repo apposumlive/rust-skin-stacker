@@ -70,7 +70,8 @@ export interface Plan {
 
 export type Progress =
   | { kind: 'request'; done: number; total: number; errors: number; key: string }
-  | { kind: 'waiting'; seconds: number };
+  | { kind: 'waiting'; seconds: number }
+  | { kind: 'reading'; read: number; total: number | null };
 
 export type StopReason = 'finished' | 'stoppedByUser' | 'tokenRejected' | 'tooManyFailures';
 
