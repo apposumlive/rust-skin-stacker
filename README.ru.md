@@ -22,7 +22,7 @@ Steam складывает одинаковые скины Rust в одну за
 
 ## Скачать
 
-Последняя версия — на странице **Releases** этого репозитория:
+Последняя версия — на странице [**Releases**](https://github.com/apposumlive/rust-skin-stacker/releases) этого репозитория:
 
 | Система | Файл |
 |---|---|
@@ -58,10 +58,10 @@ Steam складывает одинаковые скины Rust в одну за
 sha256sum -c SHA256SUMS --ignore-missing
 
 # происхождение: файл собран в GitHub Actions из этого репозитория
-gh attestation verify <файл> --repo <владелец>/rust-skin-stacker
+gh attestation verify <файл> --repo apposumlive/rust-skin-stacker
 ```
 
-Для второй команды нужен [GitHub CLI](https://cli.github.com/), в котором выполнен вход: `gh auth login`. `<владелец>` — аккаунт в адресе этой страницы. Точная команда есть в описании релиза.
+Для второй команды нужен [GitHub CLI](https://cli.github.com/), в котором выполнен вход: `gh auth login`.
 
 ## Как идёт операция
 
