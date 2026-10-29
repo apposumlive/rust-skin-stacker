@@ -139,6 +139,9 @@ export function createMockApi(): Api {
     async forgetToken() {},
     async loadInventory() {
       await wait(600);
+      // Весь демо-инвентарь — одна страница. Без задержки: снимки демо не замедляются.
+      const records = inventory.skins.reduce((n, s) => n + s.records.length, 0);
+      listener?.({ kind: 'reading', read: records, total: records });
       return inventory;
     },
     async preview(operation) {

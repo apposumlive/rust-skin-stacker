@@ -49,6 +49,7 @@ async function boot(): Promise<void> {
     inventory: null,
     loading: false,
     loadWaitUntil: null,
+    loadProgress: null,
     loadStopping: false,
     error: null,
     tokenExpired: false,

@@ -11,7 +11,7 @@ function running(p: Plan, patch: Partial<Extract<Panel, { kind: 'running' }>> = 
 }
 
 function shown(panel: Panel, over: Partial<Shown> = {}): Shown {
-  return { panel, selected: [], inventory: inventory(), delay: 1500, loading: false, loadWaitUntil: null, loadStopping: false, ...over };
+  return { panel, selected: [], inventory: inventory(), delay: 1500, loading: false, loadWaitUntil: null, loadProgress: null, loadStopping: false, ...over };
 }
 
 describe('panel step', () => {
@@ -118,6 +118,12 @@ describe('panel step while the inventory is read', () => {
     expect(panelStep(a, { ...a, loadWaitUntil: 123, loadStopping: true, selected: ['x'] })).toBe('patch');
   });
 
+  it('patches the load view when another page was read', () => {
+    const a = reading();
+    expect(panelStep(a, { ...a, loadProgress: { read: 500, total: 1234 } })).toBe('patch');
+    expect(panelStep(reading({ loadProgress: { read: 500, total: 1234 } }), { ...a, loadProgress: { read: 1000, total: 1234 } })).toBe('patch');
+  });
+
   it('rebuilds when the read starts or ends', () => {
     const idle = shown(sel);
     expect(panelStep(idle, { ...idle, loading: true })).toBe('rebuild');
@@ -163,6 +169,7 @@ describe('panel enter animation', () => {
     const reading = shown({ kind: 'selection' }, { loading: true });
     expect(entering(reading, { ...reading, loadWaitUntil: 123 })).toBe(false);
     expect(entering(reading, { ...reading, loadStopping: true })).toBe(false);
+    expect(entering(reading, { ...reading, loadProgress: { read: 500, total: null } })).toBe(false);
     const run = shown(running(plan()));
     expect(entering(run, { ...run, loading: true })).toBe(false);
     expect(entering({ ...run, loading: true }, run)).toBe(false);

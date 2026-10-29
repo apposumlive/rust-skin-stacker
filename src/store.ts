@@ -38,6 +38,8 @@ export interface State {
   loading: boolean;
   /** Конец ожидания по 429 при чтении без запуска, `Date.now()`-миллисекунды (как `waitUntil` у «Хода»). */
   loadWaitUntil: number | null;
+  /** Чтение без запуска: сколько записей прочитано и сколько их всего (`null` — Steam не сказал). `null` — страниц ещё нет. */
+  loadProgress: { read: number; total: number | null } | null;
   /** «Остановить» нажата во время чтения: ядро уже просили, ответа ждём. */
   loadStopping: boolean;
   /** Ошибка загрузки или запуска — плашка над сеткой. */
