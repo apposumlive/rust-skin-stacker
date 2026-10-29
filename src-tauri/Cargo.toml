@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Split and combine stacks of Rust skins in your Steam inventory"
 authors = ["Rust Skin Stacker contributors"]
 license = "GPL-3.0-only"
+repository = "https://github.com/apposumlive/rust-skin-stacker"
+homepage = "https://github.com/apposumlive/rust-skin-stacker"
 edition = "2024"
 rust-version = "1.90"
 

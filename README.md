@@ -22,7 +22,7 @@ Steam puts identical Rust skins into one inventory entry — "8 × Outlaw Revolv
 
 ## Download
 
-Get the latest version on the **Releases** page of this repository:
+Get the latest version on the [**Releases**](https://github.com/apposumlive/rust-skin-stacker/releases) page of this repository:
 
 | System | File |
 |---|---|
@@ -58,10 +58,10 @@ Do not share the token: until it expires, anyone who has it can act on your acco
 sha256sum -c SHA256SUMS --ignore-missing
 
 # provenance: the file was built by GitHub Actions from this repository
-gh attestation verify <file> --repo <owner>/rust-skin-stacker
+gh attestation verify <file> --repo apposumlive/rust-skin-stacker
 ```
 
-The second command needs the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`. `<owner>` is the account in the address of this page. The release notes have the exact command.
+The second command needs the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`.
 
 ## How a run works
 
