@@ -96,7 +96,11 @@ pub async fn load(
     language: &str,
     control: &ReadControl<'_>,
 ) -> Result<Inventory, SteamError> {
-    let pages = collect_pages(control.stop, |start| async move {
+    let pages = collect_pages(control.stop, control.on_page, |start| async move {
+        // Перед каждой страницей, кроме первой, — пауза.
+        if start.is_some() {
+            client.page_pause(control.stop).await?;
+        }
         client
             .inventory_page(token, start.as_deref(), language, control)
             .await
@@ -106,9 +110,11 @@ pub async fn load(
 }
 
 /// Страницы подряд по курсору `last_assetid`, пока Steam отвечает `more_items`.
-/// «Остановить» проверяется перед каждой страницей.
+/// «Остановить» проверяется перед каждой страницей. После каждой принятой страницы `on_page` узнаёт,
+/// сколько записей прочитано и сколько их всего.
 pub async fn collect_pages<F, Fut>(
     stop: &AtomicBool,
+    on_page: &(dyn Fn(u32, Option<u32>) + Sync),
     mut get_page: F,
 ) -> Result<Vec<Value>, SteamError>
 where
@@ -118,6 +124,7 @@ where
     let mut pages = Vec::new();
     let mut start = None;
     let mut seen = HashSet::new();
+    let mut read: u32 = 0;
     for _ in 0..MAX_PAGES {
         if stop.load(Ordering::SeqCst) {
             return Err(SteamError::Stopped);
@@ -132,18 +139,29 @@ where
         if obj.get("assets").is_some_and(|a| !a.is_array()) {
             return Err(SteamError::BadResponse);
         }
-        let more = truthy(obj.get("more_items"));
-        let cursor = id_of(obj.get("last_assetid"));
+        let next = if truthy(obj.get("more_items")) {
+            // Следующая страница есть, а курсора нет: молча обрезать инвентарь нельзя.
+            let cursor = id_of(obj.get("last_assetid")).ok_or(SteamError::BadResponse)?;
+            if !seen.insert(cursor.clone()) {
+                return Err(SteamError::PagingLoop);
+            }
+            Some(cursor)
+        } else {
+            None
+        };
+        let count = u32::try_from(array(obj.get("assets")).len()).unwrap_or(u32::MAX);
+        let total = obj
+            .get("total_inventory_count")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok());
         pages.push(page);
-        if !more {
-            return Ok(pages);
+        read = read.saturating_add(count);
+        // Steam насчитал меньше, чем уже прочитано: его числу верить нельзя.
+        on_page(read, total.filter(|t| *t >= read));
+        match next {
+            Some(cursor) => start = Some(cursor),
+            None => return Ok(pages),
         }
-        // Следующая страница есть, а курсора нет: молча обрезать инвентарь нельзя.
-        let cursor = cursor.ok_or(SteamError::BadResponse)?;
-        if !seen.insert(cursor.clone()) {
-            return Err(SteamError::PagingLoop);
-        }
-        start = Some(cursor);
     }
     Err(SteamError::TooLarge)
 }
@@ -352,6 +370,7 @@ mod tests {
     use serde_json::json;
     use std::collections::VecDeque;
     use std::future::ready;
+    use std::sync::Mutex;
 
     fn desc(classid: &str, instanceid: &str, hash: &str) -> Value {
         json!({
@@ -377,6 +396,36 @@ mod tests {
     /// «Остановить» не нажата.
     fn no_stop() -> AtomicBool {
         AtomicBool::new(false)
+    }
+
+    /// Ход чтения никто не смотрит.
+    fn unwatched(_: u32, _: Option<u32>) {}
+
+    /// Страница из `count` записей; `total` — `total_inventory_count`, `next` — курсор следующей страницы.
+    fn counted(count: usize, total: Option<Value>, next: Option<&str>) -> Value {
+        let mut page = json!({"assets": vec![json!({}); count]});
+        if let Some(total) = total {
+            page["total_inventory_count"] = total;
+        }
+        if let Some(cursor) = next {
+            page["more_items"] = json!(1);
+            page["last_assetid"] = json!(cursor);
+        }
+        page
+    }
+
+    /// Читает страницы подряд и записывает, что чтение сообщило после каждой.
+    async fn progress_of(
+        replies: Vec<Value>,
+    ) -> (Result<Vec<Value>, SteamError>, Vec<(u32, Option<u32>)>) {
+        let calls = Mutex::new(Vec::new());
+        let on_page = |read: u32, total: Option<u32>| calls.lock().unwrap().push((read, total));
+        let mut replies = VecDeque::from(replies);
+        let result = collect_pages(&no_stop(), &on_page, |_| {
+            ready(Ok(replies.pop_front().expect("no more pages")))
+        })
+        .await;
+        (result, calls.into_inner().unwrap())
     }
 
     fn one_skin(inv: &Inventory) -> &Skin {
@@ -560,7 +609,7 @@ mod tests {
             Ok(json!({"assets": [], "total_inventory_count": 0})),
         ]);
         let mut starts = Vec::new();
-        let pages = collect_pages(&no_stop(), |start| {
+        let pages = collect_pages(&no_stop(), &unwatched, |start| {
             starts.push(start);
             ready(replies.pop_front().unwrap())
         })
@@ -572,7 +621,7 @@ mod tests {
 
     #[tokio::test]
     async fn repeated_cursor_is_a_loop() {
-        let err = collect_pages(&no_stop(), |_| {
+        let err = collect_pages(&no_stop(), &unwatched, |_| {
             ready(Ok(
                 json!({"assets": [], "more_items": true, "last_assetid": "10"}),
             ))
@@ -584,7 +633,7 @@ mod tests {
 
     #[tokio::test]
     async fn more_items_without_cursor_is_bad() {
-        let err = collect_pages(&no_stop(), |_| {
+        let err = collect_pages(&no_stop(), &unwatched, |_| {
             ready(Ok(json!({"assets": [], "more_items": true})))
         })
         .await
@@ -599,7 +648,7 @@ mod tests {
             json!({}),
             json!({"assets": "x", "total_inventory_count": 1}),
         ] {
-            let err = collect_pages(&no_stop(), |_| ready(Ok(bad.clone())))
+            let err = collect_pages(&no_stop(), &unwatched, |_| ready(Ok(bad.clone())))
                 .await
                 .unwrap_err();
             assert_eq!(err, SteamError::BadResponse, "{bad}");
@@ -609,7 +658,7 @@ mod tests {
     #[tokio::test]
     async fn endless_inventory_is_too_large() {
         let mut n = 0;
-        let err = collect_pages(&no_stop(), |_| {
+        let err = collect_pages(&no_stop(), &unwatched, |_| {
             n += 1;
             ready(Ok(
                 json!({"assets": [], "more_items": true, "last_assetid": n.to_string()}),
@@ -623,9 +672,11 @@ mod tests {
 
     #[tokio::test]
     async fn steam_error_is_passed_through() {
-        let err = collect_pages(&no_stop(), |_| ready(Err(SteamError::Auth(401))))
-            .await
-            .unwrap_err();
+        let err = collect_pages(&no_stop(), &unwatched, |_| {
+            ready(Err(SteamError::Auth(401)))
+        })
+        .await
+        .unwrap_err();
         assert_eq!(err, SteamError::Auth(401));
     }
 
@@ -634,7 +685,7 @@ mod tests {
     async fn stop_between_pages_asks_for_no_more() {
         let stop = AtomicBool::new(false);
         let mut calls = 0;
-        let err = collect_pages(&stop, |_| {
+        let err = collect_pages(&stop, &unwatched, |_| {
             calls += 1;
             stop.store(true, Ordering::SeqCst);
             ready(Ok(
@@ -648,9 +699,76 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn every_accepted_page_reports_what_was_read() {
+        let total = || Some(json!(1234));
+        let (result, calls) = progress_of(vec![
+            counted(500, total(), Some("10")),
+            counted(500, total(), Some("20")),
+            counted(234, total(), None),
+        ])
+        .await;
+        assert_eq!(result.unwrap().len(), 3);
+        assert_eq!(
+            calls,
+            vec![(500, Some(1234)), (1000, Some(1234)), (1234, Some(1234))]
+        );
+    }
+
+    /// Steam не назвал число записей, назвал отрицательное, не помещающееся в u32 или меньше прочитанного — всего не знаем.
+    #[tokio::test]
+    async fn total_is_unknown_unless_steam_names_a_fitting_one() {
+        let (result, calls) = progress_of(vec![
+            counted(500, None, Some("10")),
+            counted(1, Some(json!(-1)), Some("20")),
+            counted(1, Some(json!(5_000_000_000_u64)), Some("30")),
+            counted(500, Some(json!(700)), None),
+        ])
+        .await;
+        result.unwrap();
+        assert_eq!(
+            calls,
+            vec![(500, None), (501, None), (502, None), (1002, None)]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_page_without_assets_adds_nothing() {
+        let (_, calls) = progress_of(vec![
+            counted(500, Some(json!(500)), Some("10")),
+            json!({"total_inventory_count": 500}),
+        ])
+        .await;
+        assert_eq!(calls, vec![(500, Some(500)), (500, Some(500))]);
+    }
+
+    /// Отклонённая страница не считается прочитанной.
+    #[tokio::test]
+    async fn a_rejected_page_is_not_reported() {
+        let first = || counted(500, Some(json!(1000)), Some("10"));
+        for (bad, error) in [
+            (
+                json!({"assets": [{}], "more_items": true}),
+                SteamError::BadResponse,
+            ),
+            (
+                counted(500, Some(json!(1000)), Some("10")),
+                SteamError::PagingLoop,
+            ),
+            (
+                json!({"assets": "x", "total_inventory_count": 1000}),
+                SteamError::BadResponse,
+            ),
+        ] {
+            let (result, calls) = progress_of(vec![first(), bad.clone()]).await;
+            assert_eq!(result.unwrap_err(), error, "{bad}");
+            assert_eq!(calls, vec![(500, Some(1000))], "{bad}");
+        }
+    }
+
+    #[tokio::test]
     async fn stopped_read_asks_for_no_page() {
         let mut calls = 0;
-        let err = collect_pages(&AtomicBool::new(true), |_| {
+        let err = collect_pages(&AtomicBool::new(true), &unwatched, |_| {
             calls += 1;
             ready(Ok(json!({"assets": [], "total_inventory_count": 0})))
         })

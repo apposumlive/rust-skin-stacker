@@ -20,6 +20,9 @@ pub const API_BASE: &str = "https://api.steampowered.com";
 pub const RUST_APPID: u32 = 252490;
 pub const RUST_CONTEXTID: u32 = 2;
 pub const PAGE_SIZE: u32 = 500;
+/// Пауза перед каждой страницей инвентаря, кроме первой: большой инвентарь читается не залпом.
+/// Ожидание по 429 — своё, отдельно от этой паузы.
+pub const PAGE_PAUSE: Duration = Duration::from_secs(1);
 /// Сколько раз повторять чтение инвентаря при 429, 5xx и сбое сети.
 pub const GET_RETRIES: u64 = 3;
 /// Дольше ждать по `Retry-After` не будем.
@@ -44,6 +47,8 @@ pub struct ReadControl<'a> {
     pub stop: &'a AtomicBool,
     /// Steam ответил 429: перед повтором ждём столько секунд. Окно показывает отсчёт.
     pub on_wait: &'a (dyn Fn(u64) + Sync),
+    /// Принята очередная страница: сколько записей прочитано всего и сколько их по словам Steam.
+    pub on_page: &'a (dyn Fn(u32, Option<u32>) + Sync),
 }
 
 /// Пауза, которую тесты подменяют записью длительности.
@@ -172,8 +177,15 @@ impl SteamClient {
         }
     }
 
-    /// Ожидание перед повтором GET, которое обрывает «Остановить». Если пауза кончилась раньше, чем опрос
-    /// заметил нажатие, повтор всё равно не уйдёт: запрос выше сначала смотрит на «Остановить».
+    /// Пауза перед очередной страницей инвентаря. Её, как и ожидание перед повтором, обрывает «Остановить».
+    /// В срок `GET_DEADLINE` она не входит: срок считается на один GET.
+    pub async fn page_pause(&self, stop: &AtomicBool) -> Result<(), SteamError> {
+        self.pause(PAGE_PAUSE, stop).await
+    }
+
+    /// Ожидание перед повтором GET или перед следующей страницей, которое обрывает «Остановить». Если пауза
+    /// кончилась раньше, чем опрос заметил нажатие, запрос всё равно не уйдёт: `inventory_page` сначала смотрит
+    /// на «Остановить».
     async fn pause(&self, pause: Duration, stop: &AtomicBool) -> Result<(), SteamError> {
         tokio::select! {
             biased;
@@ -316,6 +328,7 @@ pub(crate) fn recording_sleep() -> (SleepFn, Arc<Mutex<Vec<Duration>>>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::inventory::{self, Inventory};
     use crate::token::test_token;
     use serde_json::json;
     use wiremock::matchers::{body_string_contains, method, path, query_param};
@@ -361,13 +374,27 @@ mod tests {
             start: Option<&str>,
         ) -> Result<Value, SteamError> {
             let on_wait = |seconds| self.waits.lock().unwrap().push(seconds);
+            let on_page = |_: u32, _: Option<u32>| {};
             let control = ReadControl {
                 stop: &self.stop,
                 on_wait: &on_wait,
+                on_page: &on_page,
             };
             client
                 .inventory_page(&test_token(), start, "english", &control)
                 .await
+        }
+
+        /// Весь инвентарь, страница за страницей.
+        async fn load(&self, client: &SteamClient) -> Result<Inventory, SteamError> {
+            let on_wait = |seconds| self.waits.lock().unwrap().push(seconds);
+            let on_page = |_: u32, _: Option<u32>| {};
+            let control = ReadControl {
+                stop: &self.stop,
+                on_wait: &on_wait,
+                on_page: &on_page,
+            };
+            inventory::load(client, &test_token(), "english", &control).await
         }
 
         fn waits(&self) -> Vec<u64> {
@@ -394,6 +421,27 @@ mod tests {
             })
         });
         (sleep, slept)
+    }
+
+    /// Пауза для тестов, которая сама не кончается: записывает длительность и нажимает «Остановить».
+    /// Кончить её может только «Остановить».
+    fn stuck_sleep(stop: &Arc<AtomicBool>) -> (SleepFn, Arc<Mutex<Vec<Duration>>>) {
+        let slept = Arc::new(Mutex::new(Vec::new()));
+        let log = slept.clone();
+        let stop = stop.clone();
+        let sleep: SleepFn = Arc::new(move |d| {
+            log.lock().unwrap().push(d);
+            stop.store(true, Ordering::SeqCst);
+            Box::pin(std::future::pending())
+        });
+        (sleep, slept)
+    }
+
+    /// Не последняя страница: Steam называет курсор следующей.
+    fn paged() -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_json(json!({"response": {
+            "assets": [], "total_inventory_count": 0, "more_items": 1, "last_assetid": "1001"
+        }}))
     }
 
     async fn requests(server: &MockServer) -> usize {
@@ -660,6 +708,64 @@ mod tests {
         assert_eq!(result.unwrap_err(), SteamError::Stopped);
         assert!(took < Duration::from_secs(1), "{took:?}");
         assert!(secs(&slept).is_empty());
+    }
+
+    /// Перед второй страницей — пауза, перед первой и после последней паузы нет.
+    #[tokio::test]
+    async fn pages_after_the_first_wait_a_page_pause() {
+        let (server, client, slept) = setup().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(paged())
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .and(query_param("start_assetid", "1001"))
+            .respond_with(empty_page())
+            .expect(1)
+            .mount(&server)
+            .await;
+        Watch::default().load(&client).await.unwrap();
+        assert_eq!(*slept.lock().unwrap(), vec![PAGE_PAUSE]);
+        assert_eq!(requests(&server).await, 2);
+    }
+
+    #[tokio::test]
+    async fn one_page_has_no_page_pause() {
+        let (server, client, slept) = setup().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(empty_page())
+            .expect(1)
+            .mount(&server)
+            .await;
+        Watch::default().load(&client).await.unwrap();
+        assert!(secs(&slept).is_empty());
+    }
+
+    /// «Остановить» нажали во время паузы между страницами: пауза обрывается, второй страницы не просим.
+    #[tokio::test]
+    async fn stop_during_the_page_pause_asks_for_no_more_pages() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(paged())
+            .expect(1)
+            .mount(&server)
+            .await;
+        let watch = Watch::default();
+        let (sleep, slept) = stuck_sleep(&watch.stop);
+        let client = SteamClient::new(&server.uri(), sleep);
+        let read = tokio::time::timeout(Duration::from_secs(10), watch.load(&client));
+        let err = read
+            .await
+            .expect("Stop did not end the page pause")
+            .unwrap_err();
+        assert_eq!(err, SteamError::Stopped);
+        assert_eq!(*slept.lock().unwrap(), vec![PAGE_PAUSE]);
+        assert_eq!(requests(&server).await, 1);
     }
 
     #[tokio::test]

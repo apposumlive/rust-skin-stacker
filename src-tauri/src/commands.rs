@@ -214,7 +214,8 @@ impl AppState {
     }
 
     /// Читает инвентарь, пока этот токен в сессии. Забыли или заменили — чтение обрывается,
-    /// как и по «Остановить». Ожидание по 429 окно видит тем же событием, что и в запуске.
+    /// как и по «Остановить». Ожидание по 429 окно видит тем же событием, что и в запуске, а после каждой
+    /// страницы — сколько прочитано.
     async fn read_inventory(
         &self,
         token: &Token,
@@ -232,9 +233,12 @@ impl AppState {
             ));
             emit(Progress::Waiting { seconds });
         };
+        // Принятая страница — только окну: строка журнала на каждую страницу ни к чему.
+        let on_page = |read, total| emit(Progress::Reading { read, total });
         let control = ReadControl {
             stop: &self.stop,
             on_wait: &on_wait,
+            on_page: &on_page,
         };
         let read = inventory::load(&self.client, token, steam_language(lang), &control);
         let result = tokio::select! {
@@ -553,7 +557,7 @@ pub fn journal(state: State<'_, AppState>) -> String {
 mod tests {
     use super::*;
     use crate::settings::{MAX_DELAY_MS, MIN_DELAY_MS};
-    use crate::steam::recording_sleep;
+    use crate::steam::{PAGE_PAUSE, recording_sleep};
     use crate::token::test_token;
     use serde_json::json;
     use std::sync::Arc;
@@ -1236,6 +1240,56 @@ mod tests {
         assert_idle(&state);
     }
 
+    /// Каждая принятая страница — событие окну: сколько записей прочитано и сколько их всего. Между страницами пауза,
+    /// в журнале строк о страницах нет.
+    #[tokio::test]
+    async fn a_load_reports_every_page_to_the_window() {
+        let server = MockServer::start().await;
+        let mut first = inventory_body(3);
+        first["response"]["total_inventory_count"] = json!(2);
+        first["response"]["more_items"] = json!(true);
+        first["response"]["last_assetid"] = json!("1001");
+        let mut last = inventory_body(2);
+        last["response"]["total_inventory_count"] = json!(2);
+        last["response"]["assets"][0]["assetid"] = json!("1002");
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(200).set_body_json(first))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(200).set_body_json(last))
+            .mount(&server)
+            .await;
+        let (state, slept) = state_with(&server, Settings::default());
+        with_token(&state).await;
+        let events = Events::default();
+        let inv = state
+            .load_inventory("en", NOW, |p| events.push(p))
+            .await
+            .unwrap();
+        assert_eq!(inv.total(), 5);
+        assert_eq!(
+            events.all(),
+            vec![
+                Progress::Reading {
+                    read: 1,
+                    total: Some(2)
+                },
+                Progress::Reading {
+                    read: 2,
+                    total: Some(2)
+                },
+            ]
+        );
+        assert_eq!(*slept.lock().unwrap(), vec![PAGE_PAUSE]);
+        // Версия и итог чтения — и всё.
+        let journal = state.journal_text();
+        assert_eq!(journal.lines().count(), 2, "{journal}");
+    }
+
     /// Steam попросил подождать при чтении: окно получает то же событие, что и во время запуска, журнал — строку.
     #[tokio::test]
     async fn rate_limit_wait_during_a_load_is_shown_to_the_window() {
@@ -1254,7 +1308,16 @@ mod tests {
             .load_inventory("en", NOW, |p| events.push(p))
             .await
             .unwrap();
-        assert_eq!(events.all(), vec![Progress::Waiting { seconds: 7 }]);
+        assert_eq!(
+            events.all(),
+            vec![
+                Progress::Waiting { seconds: 7 },
+                Progress::Reading {
+                    read: 1,
+                    total: Some(1)
+                },
+            ]
+        );
         assert_eq!(*slept.lock().unwrap(), vec![Duration::from_secs(7)]);
         assert!(
             state
@@ -1295,7 +1358,14 @@ mod tests {
         assert!(matches!(result, StartResult::Finished { .. }), "{result:?}");
         let events = events.all();
         assert_eq!(events.first(), Some(&Progress::Waiting { seconds: 4 }));
-        assert!(matches!(events[1], Progress::Request { done: 0, .. }));
+        assert_eq!(
+            events[1],
+            Progress::Reading {
+                read: 1,
+                total: Some(1)
+            }
+        );
+        assert!(matches!(events[2], Progress::Request { done: 0, .. }));
     }
 
     #[tokio::test]

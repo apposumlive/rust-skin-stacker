@@ -58,6 +58,8 @@ pub enum Progress {
     },
     /// Steam ответил 429: ждём столько секунд.
     Waiting { seconds: u64 },
+    /// Чтение инвентаря приняло страницу: прочитано записей и сколько их всего (`None` — Steam не сказал).
+    Reading { read: u32, total: Option<u32> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -442,7 +444,7 @@ mod tests {
             .iter()
             .filter_map(|e| match e {
                 Progress::Waiting { seconds } => Some(*seconds),
-                Progress::Request { .. } => None,
+                Progress::Request { .. } | Progress::Reading { .. } => None,
             })
             .collect()
     }
@@ -1047,6 +1049,22 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&Progress::Waiting { seconds: 5 }).unwrap(),
             r#"{"kind":"waiting","seconds":5}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Progress::Reading {
+                read: 500,
+                total: Some(1234)
+            })
+            .unwrap(),
+            r#"{"kind":"reading","read":500,"total":1234}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&Progress::Reading {
+                read: 500,
+                total: None
+            })
+            .unwrap(),
+            r#"{"kind":"reading","read":500,"total":null}"#
         );
         assert_eq!(
             serde_json::to_string(&StopReason::TooManyFailures).unwrap(),
