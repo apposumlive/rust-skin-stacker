@@ -167,8 +167,8 @@
   "run.browse": "You can keep browsing the grid while it runs.",
 
   "load.stopping": "Stopping…",
-  "load.progress": "Records read: {read} of {total}",
-  "load.progressCount": "Records read: {read}",
+  "load.progress": "Entries read: {read} of {total}",
+  "load.progressCount": "Entries read: {read}",
 
   "result.done": "Done",
   "result.stopped": "Stopped",
