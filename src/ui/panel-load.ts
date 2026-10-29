@@ -22,18 +22,20 @@ const loadingParts = new WeakMap<HTMLElement, LoadingParts>();
 
 /** «Записей прочитано» и полоса. До первой страницы скрыто всё; полоса видна, только когда Steam назвал, сколько записей всего. */
 function paintProgress(parts: LoadingParts, progress: State['loadProgress']): void {
-  const total = progress?.total ?? null;
   parts.progress.hidden = !progress;
-  parts.progress.textContent = !progress
-    ? ''
-    : total === null
-      ? t('load.progressCount', { read: fmtInt(progress.read) })
-      : t('load.progress', { read: fmtInt(progress.read), total: fmtInt(total) });
-  parts.bar.hidden = !progress || total === null || total <= 0;
-  if (!progress || total === null || total <= 0) return;
-  parts.fill.style.width = `${Math.min(100, Math.round((progress.read / total) * 100))}%`;
+  parts.bar.hidden = !progress?.total;
+  if (!progress) {
+    parts.progress.textContent = '';
+    return;
+  }
+  const { read, total } = progress;
+  parts.progress.textContent =
+    total === null ? t('load.progressCount', { read: fmtInt(read) }) : t('load.progress', { read: fmtInt(read), total: fmtInt(total) });
+  // Всего 0 или неизвестно — полосы нет.
+  if (!total) return;
+  parts.fill.style.width = `${Math.min(100, Math.round((read / total) * 100))}%`;
   parts.bar.setAttribute('aria-valuemax', String(total));
-  parts.bar.setAttribute('aria-valuenow', String(Math.min(progress.read, total)));
+  parts.bar.setAttribute('aria-valuenow', String(Math.min(read, total)));
 }
 
 function paintLoading(parts: LoadingParts, state: State, tick: (fn: () => void) => void): void {
