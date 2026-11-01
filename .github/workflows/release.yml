@@ -127,11 +127,38 @@ jobs:
           NOTES: |
             Builds for Windows and Linux. Not affiliated with Valve or Facepunch.
 
+            **Which file to download**
+
+            | System | File |
+            |---|---|
+            | Windows 10/11 | `…_x64-setup.exe` — installer; take this one if unsure |
+            | Windows 10/11, managed PCs | `…_x64_en-US.msi` |
+            | Linux, any distribution | `….AppImage` — allow it to run, then open it |
+            | Ubuntu, Debian | `….deb` |
+            | Fedora | `….rpm` |
+
+            Linux builds need glibc 2.39 or newer: Ubuntu 24.04+, Debian 13+, Fedora 40+.
+
             **Check a file before you run it**
             - Checksum: compare the file with `SHA256SUMS` — `sha256sum -c SHA256SUMS --ignore-missing` on Linux, `Get-FileHash <file>` on Windows.
             - Provenance: `gh attestation verify <file> --repo ${{ github.repository }}`
               It needs the [GitHub CLI](https://cli.github.com/), signed in with `gh auth login`.
 
             Windows SmartScreen may warn about an unsigned app. The README explains what to do.
+
+            ---
+
+            **Какой файл скачать**
+
+            | Система | Файл |
+            |---|---|
+            | Windows 10/11 | `…_x64-setup.exe` — установщик; если не знаете, что выбрать, берите его |
+            | Windows 10/11, рабочие компьютеры с политиками | `…_x64_en-US.msi` |
+            | Linux, любой дистрибутив | `….AppImage` — разрешите запуск и откройте |
+            | Ubuntu, Debian | `….deb` |
+            | Fedora | `….rpm` |
+
+            Сборкам для Linux нужна glibc 2.39 или новее: Ubuntu 24.04+, Debian 13+, Fedora 40+.
+            Не связано с Valve и Facepunch. Как проверить файл и что делать с предупреждением SmartScreen — в [README на русском](https://github.com/${{ github.repository }}/blob/main/README.ru.md).
         run: |
           gh release create "$TAG" --verify-tag --draft --title "Rust Skin Stacker $TAG" --notes "$NOTES" --repo "$REPO" files/* SHA256SUMS
