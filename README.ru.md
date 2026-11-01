@@ -27,7 +27,10 @@ Steam складывает одинаковые скины Rust в одну за
 | Система | Файл |
 |---|---|
 | Windows 10/11 | `…_x64-setup.exe` (установщик) или `…_x64_en-US.msi` |
+| Windows 10/11, без установки | `…_x64-portable.exe` |
 | Linux | `….AppImage`, `….deb` или `….rpm` |
+
+Версия без установки запускается из любой папки. Ей нужен WebView2 от Microsoft: в Windows 11 он встроен, в Windows 10 ставится вместе с Edge. Её настройки хранятся в `%APPDATA%\io.rustskinstacker.desktop`.
 
 Всем сборкам для Linux, и AppImage тоже, нужна glibc 2.39 или новее: Ubuntu 24.04+, Debian 13+, Fedora 40+.
 

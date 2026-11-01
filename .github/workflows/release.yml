@@ -78,6 +78,11 @@ jobs:
               *.exe|*.msi|*.AppImage|*.deb|*.rpm) cp "$f" "release-files/$(basename "$f" | tr ' ' '.')" ;;
             esac
           done
+          # Версия без установки: та же программа одним файлом, что ставят установщики.
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+            cp src-tauri/target/release/rust-skin-stacker.exe "release-files/Rust.Skin.Stacker_${version}_x64-portable.exe"
+          fi
           ls -l release-files
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -133,10 +138,12 @@ jobs:
             |---|---|
             | Windows 10/11 | `…_x64-setup.exe` — installer; take this one if unsure |
             | Windows 10/11, managed PCs | `…_x64_en-US.msi` |
+            | Windows 10/11, no install | `…_x64-portable.exe` — runs from any folder |
             | Linux, any distribution | `….AppImage` — allow it to run, then open it |
             | Ubuntu, Debian | `….deb` |
             | Fedora | `….rpm` |
 
+            The no-install version needs Microsoft WebView2: Windows 11 has it built in, on Windows 10 it comes with Edge.
             Linux builds need glibc 2.39 or newer: Ubuntu 24.04+, Debian 13+, Fedora 40+.
 
             **Check a file before you run it**
@@ -154,10 +161,12 @@ jobs:
             |---|---|
             | Windows 10/11 | `…_x64-setup.exe` — установщик; если не знаете, что выбрать, берите его |
             | Windows 10/11, рабочие компьютеры с политиками | `…_x64_en-US.msi` |
+            | Windows 10/11, без установки | `…_x64-portable.exe` — запускается из любой папки |
             | Linux, любой дистрибутив | `….AppImage` — разрешите запуск и откройте |
             | Ubuntu, Debian | `….deb` |
             | Fedora | `….rpm` |
 
+            Версии без установки нужен WebView2 от Microsoft: в Windows 11 он встроен, в Windows 10 ставится вместе с Edge.
             Сборкам для Linux нужна glibc 2.39 или новее: Ubuntu 24.04+, Debian 13+, Fedora 40+.
             Не связано с Valve и Facepunch. Как проверить файл и что делать с предупреждением SmartScreen — в [README на русском](https://github.com/${{ github.repository }}/blob/main/README.ru.md).
         run: |

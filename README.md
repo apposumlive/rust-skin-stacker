@@ -27,7 +27,10 @@ Get the latest version on the [**Releases**](https://github.com/apposumlive/rust
 | System | File |
 |---|---|
 | Windows 10/11 | `…_x64-setup.exe` (installer) or `…_x64_en-US.msi` |
+| Windows 10/11, no install | `…_x64-portable.exe` |
 | Linux | `….AppImage`, `….deb` or `….rpm` |
+
+The no-install version runs from any folder. It needs Microsoft WebView2: Windows 11 has it built in, on Windows 10 it comes with Edge. Its settings are kept in `%APPDATA%\io.rustskinstacker.desktop`.
 
 All Linux builds, the AppImage included, need glibc 2.39 or newer: Ubuntu 24.04+, Debian 13+, Fedora 40+.
 
