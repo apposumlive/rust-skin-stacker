@@ -23,8 +23,11 @@ pub const PAGE_SIZE: u32 = 500;
 /// Пауза перед каждой страницей инвентаря, кроме первой: большой инвентарь читается не залпом.
 /// Ожидание по 429 — своё, отдельно от этой паузы.
 pub const PAGE_PAUSE: Duration = Duration::from_secs(1);
-/// Сколько раз повторять чтение инвентаря при 429, 5xx и сбое сети.
+/// Сколько раз повторять чтение инвентаря при 429, 5xx, сбое сети и eresult 29.
 pub const GET_RETRIES: u64 = 3;
+/// eresult 29 (DuplicateRequest): так Steam отвечает на чтение инвентаря сразу после разделения или сборки.
+/// Через несколько секунд то же чтение проходит.
+const DUPLICATE_REQUEST: i32 = 29;
 /// Дольше ждать по `Retry-After` не будем.
 pub const MAX_RETRY_AFTER: u64 = 60;
 /// Дольше одного запроса (вместе с телом ответа) не ждём.
@@ -104,7 +107,7 @@ impl SteamClient {
     }
 
     /// Одна страница инвентаря Rust: объект `response` из ответа Steam.
-    /// Повторяется при 429, 5xx и сбое сети, не больше `GET_RETRIES` раз и в срок `GET_DEADLINE`.
+    /// Повторяется при 429, 5xx, сбое сети и eresult 29, не больше `GET_RETRIES` раз и в срок `GET_DEADLINE`.
     /// «Остановить» обрывает и запрос, и ожидание перед повтором.
     pub async fn inventory_page(
         &self,
@@ -149,6 +152,7 @@ impl SteamClient {
                     Some(retry_after.unwrap_or(10 * (attempt + 1)))
                 }
                 Err(SteamError::Http(status)) if *status >= 500 => Some(10 * (attempt + 1)),
+                Err(SteamError::Rejected(DUPLICATE_REQUEST)) => Some(3 * (attempt + 1)),
                 _ => None,
             };
             match wait.map(|secs| Duration::from_secs(secs.min(MAX_RETRY_AFTER))) {
@@ -534,6 +538,60 @@ mod tests {
         let err = first_page(&client).await.unwrap_err();
         assert_eq!(err, SteamError::Http(502));
         assert_eq!(secs(&slept), vec![10, 20, 30]);
+    }
+
+    /// Так Steam отвечал на чтение для сверки сразу после разделения или сборки на настоящем аккаунте.
+    fn duplicate_request() -> ResponseTemplate {
+        ResponseTemplate::new(200).insert_header("x-eresult", "29")
+    }
+
+    #[tokio::test]
+    async fn inventory_page_retries_duplicate_request() {
+        let (server, client, slept) = setup().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(duplicate_request())
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(empty_page())
+            .mount(&server)
+            .await;
+        let watch = Watch::default();
+        watch.page(&client, None).await.unwrap();
+        assert_eq!(secs(&slept), vec![3]);
+        // Подождать Steam не просил: окну отсчёт не показываем.
+        assert!(watch.waits().is_empty());
+    }
+
+    #[tokio::test]
+    async fn inventory_page_gives_up_after_three_duplicate_requests() {
+        let (server, client, slept) = setup().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(duplicate_request())
+            .expect(4)
+            .mount(&server)
+            .await;
+        let err = first_page(&client).await.unwrap_err();
+        assert_eq!(err, SteamError::Rejected(29));
+        assert_eq!(secs(&slept), vec![3, 6, 9]);
+    }
+
+    #[tokio::test]
+    async fn inventory_page_does_not_retry_other_eresults() {
+        let (server, client, slept) = setup().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(200).insert_header("x-eresult", "8"))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let err = first_page(&client).await.unwrap_err();
+        assert_eq!(err, SteamError::Rejected(8));
+        assert!(secs(&slept).is_empty());
     }
 
     #[tokio::test]
