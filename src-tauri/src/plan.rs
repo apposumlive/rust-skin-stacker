@@ -14,9 +14,10 @@ pub const QUEUE_PREVIEW: usize = 5;
 pub enum Operation {
     SplitAll,
     CombineAll,
-    SplitSelected { keys: Vec<String> },
     CombineSelected { keys: Vec<String> },
-    SplitOff { key: String, count: u32 },
+    SplitRecords { assetids: Vec<String> },
+    CombineRecords { assetids: Vec<String> },
+    SplitOff { assetid: String, count: u32 },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,13 +50,14 @@ pub struct QueueItem {
     pub requests: u32,
 }
 
-/// Раскладка скина после операции.
+/// Что станет с записью после операции.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct SkinAfter {
-    pub key: String,
-    /// По убыванию.
-    pub stacks: Vec<u32>,
+pub struct CardAfter {
+    pub assetid: String,
+    /// Сколько штук останется в записи; 0 — запись уйдёт в другую стопку.
+    pub amount: u32,
+    /// Сколько штук от неё отделится по одной.
     pub singles: u32,
 }
 
@@ -72,47 +74,78 @@ pub struct Plan {
     pub queue: Vec<QueueItem>,
     /// «и ещё N» после очереди.
     pub more: u32,
-    pub after: Vec<SkinAfter>,
+    pub cards: Vec<CardAfter>,
 }
 
 struct SkinPart {
     steps: Vec<Step>,
     queue: Vec<QueueItem>,
-    after: SkinAfter,
+    cards: Vec<CardAfter>,
+}
+
+/// Что выбрал пользователь: всё, скины целиком или отдельные записи.
+enum Picked<'a> {
+    All,
+    Keys(HashSet<&'a str>),
+    Records(HashSet<&'a str>),
+}
+
+impl Picked<'_> {
+    fn has_skin(&self, skin: &Skin) -> bool {
+        match self {
+            Picked::All => true,
+            Picked::Keys(keys) => keys.contains(skin.key.as_str()),
+            Picked::Records(ids) => skin
+                .records
+                .iter()
+                .any(|r| ids.contains(r.assetid.as_str())),
+        }
+    }
+
+    fn has_record(&self, skin: &Skin, record: &Record) -> bool {
+        match self {
+            Picked::All => true,
+            Picked::Keys(keys) => keys.contains(skin.key.as_str()),
+            Picked::Records(ids) => ids.contains(record.assetid.as_str()),
+        }
+    }
 }
 
 pub fn build(inventory: &Inventory, operation: &Operation) -> Plan {
-    let selected: Option<HashSet<&str>> = match operation {
-        Operation::SplitAll | Operation::CombineAll => None,
-        Operation::SplitSelected { keys } | Operation::CombineSelected { keys } => {
-            Some(keys.iter().map(String::as_str).collect())
+    let picked = match operation {
+        Operation::SplitAll | Operation::CombineAll => Picked::All,
+        Operation::CombineSelected { keys } => {
+            Picked::Keys(keys.iter().map(String::as_str).collect())
         }
-        Operation::SplitOff { key, .. } => Some(HashSet::from([key.as_str()])),
+        Operation::SplitRecords { assetids } | Operation::CombineRecords { assetids } => {
+            Picked::Records(assetids.iter().map(String::as_str).collect())
+        }
+        Operation::SplitOff { assetid, .. } => Picked::Records(HashSet::from([assetid.as_str()])),
     };
     let mut skins: Vec<&Skin> = inventory
         .skins
         .iter()
-        .filter(|s| {
-            selected
-                .as_ref()
-                .is_none_or(|keys| keys.contains(s.key.as_str()))
-        })
+        .filter(|s| picked.has_skin(s))
         .collect();
     // При равном total — по ключу, а не по имени: имя зависит от языка, и смена языка
     // между предпросмотром и запуском дала бы другой порядок шагов.
     skins.sort_by(|a, b| b.total.cmp(&a.total).then_with(|| a.key.cmp(&b.key)));
 
-    let (mut steps, mut queue, mut after) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut steps, mut queue, mut cards) = (Vec::new(), Vec::new(), Vec::new());
     for skin in skins {
         let part = match operation {
-            Operation::SplitAll | Operation::SplitSelected { .. } => split_skin(skin, u32::MAX),
-            Operation::SplitOff { count, .. } => split_skin(skin, *count),
-            Operation::CombineAll | Operation::CombineSelected { .. } => combine_skin(skin),
+            Operation::SplitAll | Operation::SplitRecords { .. } => {
+                split_skin(skin, &picked, u32::MAX)
+            }
+            Operation::SplitOff { count, .. } => split_skin(skin, &picked, *count),
+            Operation::CombineAll
+            | Operation::CombineSelected { .. }
+            | Operation::CombineRecords { .. } => combine_skin(skin, &picked),
         };
         if let Some(part) = part {
             steps.extend(part.steps);
             queue.extend(part.queue);
-            after.push(part.after);
+            cards.extend(part.cards);
         }
     }
     let stacks = queue.len() as u32;
@@ -125,17 +158,19 @@ pub fn build(inventory: &Inventory, operation: &Operation) -> Plan {
         stacks,
         queue,
         more,
-        after,
+        cards,
     }
 }
 
-/// Отделить по одному не больше `limit` штук, начиная с самой большой записи.
-fn split_skin(skin: &Skin, limit: u32) -> Option<SkinPart> {
+/// Отделить по одному не больше `limit` штук от выбранных записей скина, в их порядке.
+fn split_skin(skin: &Skin, picked: &Picked, limit: u32) -> Option<SkinPart> {
     let mut left = limit;
-    let (mut steps, mut queue, mut stacks, mut singles) =
-        (Vec::new(), Vec::new(), Vec::new(), 0u32);
-    for record in &skin.records {
+    let (mut steps, mut queue, mut cards) = (Vec::new(), Vec::new(), Vec::new());
+    for record in skin.records.iter().filter(|r| picked.has_record(skin, r)) {
         let n = record.amount.saturating_sub(1).min(left);
+        if n == 0 {
+            continue;
+        }
         left -= n;
         for _ in 0..n {
             steps.push(Step::Split {
@@ -143,48 +178,46 @@ fn split_skin(skin: &Skin, limit: u32) -> Option<SkinPart> {
                 assetid: record.assetid.clone(),
             });
         }
-        if n > 0 {
-            queue.push(QueueItem {
-                key: skin.key.clone(),
-                amount: record.amount,
-                requests: n,
-            });
-        }
-        singles += n;
-        match record.amount - n {
-            1 => singles += 1,
-            rest => stacks.push(rest),
-        }
+        queue.push(QueueItem {
+            key: skin.key.clone(),
+            amount: record.amount,
+            requests: n,
+        });
+        cards.push(CardAfter {
+            assetid: record.assetid.clone(),
+            amount: record.amount - n,
+            singles: n,
+        });
     }
     if steps.is_empty() {
         return None;
     }
-    stacks.sort_unstable_by(|a, b| b.cmp(a));
     Some(SkinPart {
         steps,
         queue,
-        after: SkinAfter {
-            key: skin.key.clone(),
-            stacks,
-            singles,
-        },
+        cards,
     })
 }
 
-/// Собрать каждую группу (`classid`, `instanceid`) в её самую большую запись.
-fn combine_skin(skin: &Skin) -> Option<SkinPart> {
+/// Собрать выбранные записи каждой группы (`classid`, `instanceid`) в первую из группы.
+fn combine_skin(skin: &Skin, picked: &Picked) -> Option<SkinPart> {
     let mut groups: BTreeMap<(&str, &str), Vec<&Record>> = BTreeMap::new();
-    for record in &skin.records {
+    for record in skin.records.iter().filter(|r| picked.has_record(skin, r)) {
         groups
             .entry((record.classid.as_str(), record.instanceid.as_str()))
             .or_default()
             .push(record);
     }
-    let (mut steps, mut queue, mut amounts) = (Vec::new(), Vec::new(), Vec::new());
-    for records in groups.values() {
+    let (mut steps, mut queue, mut cards) = (Vec::new(), Vec::new(), Vec::new());
+    for records in groups.values().filter(|g| g.len() > 1) {
         // Записи уже по убыванию amount: первая — назначение.
         let dest = records[0];
         let total: u32 = records.iter().map(|r| r.amount).sum();
+        cards.push(CardAfter {
+            assetid: dest.assetid.clone(),
+            amount: total,
+            singles: 0,
+        });
         for from in &records[1..] {
             steps.push(Step::Combine {
                 key: skin.key.clone(),
@@ -192,30 +225,25 @@ fn combine_skin(skin: &Skin) -> Option<SkinPart> {
                 dest: dest.clone(),
                 quantity: from.amount,
             });
-        }
-        if records.len() > 1 {
-            queue.push(QueueItem {
-                key: skin.key.clone(),
-                amount: total,
-                requests: records.len() as u32 - 1,
+            cards.push(CardAfter {
+                assetid: from.assetid.clone(),
+                amount: 0,
+                singles: 0,
             });
         }
-        amounts.push(total);
+        queue.push(QueueItem {
+            key: skin.key.clone(),
+            amount: total,
+            requests: records.len() as u32 - 1,
+        });
     }
     if steps.is_empty() {
         return None;
     }
-    let singles = amounts.iter().filter(|a| **a == 1).count() as u32;
-    let mut stacks: Vec<u32> = amounts.into_iter().filter(|a| *a > 1).collect();
-    stacks.sort_unstable_by(|a, b| b.cmp(a));
     Some(SkinPart {
         steps,
         queue,
-        after: SkinAfter {
-            key: skin.key.clone(),
-            stacks,
-            singles,
-        },
+        cards,
     })
 }
 
@@ -294,10 +322,10 @@ mod tests {
             .collect()
     }
 
-    fn after(key: &str, stacks: Vec<u32>, singles: u32) -> SkinAfter {
-        SkinAfter {
-            key: key.into(),
-            stacks,
+    fn card(assetid: &str, amount: u32, singles: u32) -> CardAfter {
+        CardAfter {
+            assetid: assetid.into(),
+            amount,
             singles,
         }
     }
@@ -310,17 +338,34 @@ mod tests {
         }
     }
 
-    #[test]
-    fn split_all_needs_a_minus_one_requests_per_stack() {
-        let inventory = inv(vec![skin(
+    fn merge(key: &str, from: Record, dest: Record) -> Step {
+        let quantity = from.amount;
+        Step::Combine {
+            key: key.into(),
+            from,
+            dest,
+            quantity,
+        }
+    }
+
+    fn ids(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn a_stacks() -> Inventory {
+        inv(vec![skin(
             "A",
             vec![rec("1", "0", 5), rec("2", "0", 4), rec("3", "0", 1)],
-        )]);
-        let plan = build(&inventory, &Operation::SplitAll);
+        )])
+    }
+
+    #[test]
+    fn split_all_needs_a_minus_one_requests_per_stack() {
+        let plan = build(&a_stacks(), &Operation::SplitAll);
         assert_eq!(plan.requests, 7);
         assert_eq!(plan.stacks, 2);
         assert_eq!(split_ids(&plan), vec!["1", "1", "1", "1", "2", "2", "2"]);
-        assert_eq!(plan.after, vec![after("A", vec![], 10)]);
+        assert_eq!(plan.cards, vec![card("1", 1, 4), card("2", 1, 3)]);
         assert_eq!(plan.queue, vec![queued("A", 5, 4), queued("A", 4, 3)]);
         assert_eq!(plan.more, 0);
     }
@@ -332,7 +377,7 @@ mod tests {
             &Operation::SplitAll,
         );
         assert_eq!(plan.requests, 1);
-        assert_eq!(plan.after, vec![after("A", vec![], 2)]);
+        assert_eq!(plan.cards, vec![card("1", 1, 1)]);
     }
 
     #[test]
@@ -342,37 +387,76 @@ mod tests {
             &Operation::SplitAll,
         );
         assert_eq!(plan.requests, 0);
-        assert!(plan.steps.is_empty() && plan.after.is_empty() && plan.queue.is_empty());
+        assert!(plan.steps.is_empty() && plan.cards.is_empty() && plan.queue.is_empty());
     }
 
     #[test]
-    fn split_selected_touches_only_selected_skins() {
+    fn split_records_splits_only_picked_stacks() {
+        let plan = build(
+            &a_stacks(),
+            &Operation::SplitRecords {
+                assetids: ids(&["2"]),
+            },
+        );
+        assert_eq!(split_ids(&plan), vec!["2", "2", "2"]);
+        assert_eq!(plan.cards, vec![card("2", 1, 3)]);
+        assert_eq!(plan.queue, vec![queued("A", 4, 3)]);
+    }
+
+    #[test]
+    fn split_records_ignores_singles_and_unknown_ids() {
+        let plan = build(
+            &a_stacks(),
+            &Operation::SplitRecords {
+                assetids: ids(&["3", "x"]),
+            },
+        );
+        assert_eq!(plan.requests, 0);
+        assert!(plan.cards.is_empty() && plan.queue.is_empty());
+    }
+
+    #[test]
+    fn split_records_ignores_repeated_ids() {
+        let plan = build(
+            &a_stacks(),
+            &Operation::SplitRecords {
+                assetids: ids(&["2", "2"]),
+            },
+        );
+        assert_eq!(plan.requests, 3);
+        assert_eq!(plan.cards, vec![card("2", 1, 3)]);
+    }
+
+    #[test]
+    fn split_records_across_skins() {
         let inventory = inv(vec![
-            skin("A", vec![rec("1", "0", 3)]),
-            skin("B", vec![rec("2", "0", 3)]),
+            skin("A", vec![rec("1", "0", 2)]),
+            skin("B", vec![rec("2", "0", 3), rec("3", "0", 1)]),
         ]);
         let plan = build(
             &inventory,
-            &Operation::SplitSelected {
-                keys: vec!["B".into()],
+            &Operation::SplitRecords {
+                assetids: ids(&["1", "2"]),
             },
         );
-        assert_eq!(split_ids(&plan), vec!["2", "2"]);
-        assert_eq!(plan.after, vec![after("B", vec![], 3)]);
+        // B больше по total, значит идёт первым.
+        assert_eq!(split_ids(&plan), vec!["2", "2", "1"]);
+        assert_eq!(plan.cards, vec![card("2", 1, 2), card("1", 1, 1)]);
+        assert_eq!(plan.queue, vec![queued("B", 3, 2), queued("A", 2, 1)]);
     }
 
     #[test]
-    fn split_off_takes_from_the_largest_stack_first() {
+    fn split_off_takes_only_from_that_stack() {
         let inventory = inv(vec![skin("A", vec![rec("1", "0", 5), rec("2", "0", 4)])]);
         let plan = build(
             &inventory,
             &Operation::SplitOff {
-                key: "A".into(),
-                count: 6,
+                assetid: "2".into(),
+                count: 2,
             },
         );
-        assert_eq!(split_ids(&plan), vec!["1", "1", "1", "1", "2", "2"]);
-        assert_eq!(plan.after, vec![after("A", vec![2], 7)]);
+        assert_eq!(split_ids(&plan), vec!["2", "2"]);
+        assert_eq!(plan.cards, vec![card("2", 2, 2)]);
     }
 
     #[test]
@@ -380,25 +464,12 @@ mod tests {
         let plan = build(
             &inv(vec![skin("A", vec![rec("1", "0", 3)])]),
             &Operation::SplitOff {
-                key: "A".into(),
+                assetid: "1".into(),
                 count: 10,
             },
         );
         assert_eq!(plan.requests, 2);
-        assert_eq!(plan.after, vec![after("A", vec![], 3)]);
-    }
-
-    #[test]
-    fn split_off_keeps_the_rest_as_a_stack() {
-        let plan = build(
-            &inv(vec![skin("A", vec![rec("1", "0", 8)])]),
-            &Operation::SplitOff {
-                key: "A".into(),
-                count: 2,
-            },
-        );
-        assert_eq!(plan.requests, 2);
-        assert_eq!(plan.after, vec![after("A", vec![6], 2)]);
+        assert_eq!(plan.cards, vec![card("1", 1, 2)]);
     }
 
     #[test]
@@ -406,40 +477,43 @@ mod tests {
         let plan = build(
             &inv(vec![skin("A", vec![rec("1", "0", 8)])]),
             &Operation::SplitOff {
-                key: "A".into(),
+                assetid: "1".into(),
                 count: 0,
             },
         );
         assert_eq!(plan.requests, 0);
+        assert!(plan.cards.is_empty());
+    }
+
+    #[test]
+    fn split_off_unknown_assetid_does_nothing() {
+        let plan = build(
+            &inv(vec![skin("A", vec![rec("1", "0", 8)])]),
+            &Operation::SplitOff {
+                assetid: "nope".into(),
+                count: 3,
+            },
+        );
+        assert_eq!(plan.requests, 0);
+        assert!(plan.cards.is_empty());
     }
 
     #[test]
     fn combine_all_merges_into_the_largest_record() {
-        let inventory = inv(vec![skin(
-            "A",
-            vec![rec("1", "0", 5), rec("2", "0", 4), rec("3", "0", 1)],
-        )]);
-        let plan = build(&inventory, &Operation::CombineAll);
+        let plan = build(&a_stacks(), &Operation::CombineAll);
         assert_eq!(
             plan.steps,
             vec![
-                Step::Combine {
-                    key: "A".into(),
-                    from: rec("2", "0", 4),
-                    dest: rec("1", "0", 5),
-                    quantity: 4
-                },
-                Step::Combine {
-                    key: "A".into(),
-                    from: rec("3", "0", 1),
-                    dest: rec("1", "0", 5),
-                    quantity: 1
-                },
+                merge("A", rec("2", "0", 4), rec("1", "0", 5)),
+                merge("A", rec("3", "0", 1), rec("1", "0", 5)),
             ]
         );
         assert_eq!(plan.stacks, 1);
         assert_eq!(plan.queue, vec![queued("A", 10, 2)]);
-        assert_eq!(plan.after, vec![after("A", vec![10], 0)]);
+        assert_eq!(
+            plan.cards,
+            vec![card("1", 10, 0), card("2", 0, 0), card("3", 0, 0)]
+        );
     }
 
     #[test]
@@ -451,14 +525,9 @@ mod tests {
         let plan = build(&inventory, &Operation::CombineAll);
         assert_eq!(
             plan.steps,
-            vec![Step::Combine {
-                key: "A".into(),
-                from: rec("3", "0", 1),
-                dest: rec("1", "0", 3),
-                quantity: 1
-            }]
+            vec![merge("A", rec("3", "0", 1), rec("1", "0", 3))]
         );
-        assert_eq!(plan.after, vec![after("A", vec![4, 2], 0)]);
+        assert_eq!(plan.cards, vec![card("1", 4, 0), card("3", 0, 0)]);
     }
 
     #[test]
@@ -469,13 +538,9 @@ mod tests {
         );
         assert_eq!(
             plan.steps,
-            vec![Step::Combine {
-                key: "A".into(),
-                from: rec("20", "0", 2),
-                dest: rec("10", "0", 2),
-                quantity: 2
-            }]
+            vec![merge("A", rec("20", "0", 2), rec("10", "0", 2))]
         );
+        assert_eq!(plan.cards, vec![card("10", 4, 0), card("20", 0, 0)]);
     }
 
     #[test]
@@ -484,7 +549,7 @@ mod tests {
             &inv(vec![skin("A", vec![rec("1", "0", 1), rec("2", "0", 1)])]),
             &Operation::CombineAll,
         );
-        assert_eq!(plan.after, vec![after("A", vec![2], 0)]);
+        assert_eq!(plan.cards, vec![card("1", 2, 0), card("2", 0, 0)]);
     }
 
     #[test]
@@ -494,6 +559,109 @@ mod tests {
             &Operation::CombineAll,
         );
         assert_eq!(plan.requests, 0);
+        assert!(plan.cards.is_empty());
+    }
+
+    #[test]
+    fn combine_records_merges_picked_into_the_largest_picked() {
+        let inventory = inv(vec![skin(
+            "A",
+            vec![
+                rec("1", "0", 5),
+                rec("2", "0", 4),
+                rec("3", "0", 1),
+                rec("4", "0", 1),
+            ],
+        )]);
+        let plan = build(
+            &inventory,
+            &Operation::CombineRecords {
+                assetids: ids(&["2", "3", "4"]),
+            },
+        );
+        assert_eq!(
+            plan.steps,
+            vec![
+                merge("A", rec("3", "0", 1), rec("2", "0", 4)),
+                merge("A", rec("4", "0", 1), rec("2", "0", 4)),
+            ]
+        );
+        assert_eq!(
+            plan.cards,
+            vec![card("2", 6, 0), card("3", 0, 0), card("4", 0, 0)]
+        );
+        assert_eq!(plan.queue, vec![queued("A", 6, 2)]);
+    }
+
+    #[test]
+    fn combine_records_ignores_repeated_and_unknown_ids() {
+        let inventory = inv(vec![skin("A", vec![rec("1", "0", 2), rec("2", "0", 1)])]);
+        let plan = build(
+            &inventory,
+            &Operation::CombineRecords {
+                assetids: ids(&["2", "1", "2", "zzz"]),
+            },
+        );
+        assert_eq!(
+            plan.steps,
+            vec![merge("A", rec("2", "0", 1), rec("1", "0", 2))]
+        );
+        assert_eq!(plan.cards, vec![card("1", 3, 0), card("2", 0, 0)]);
+    }
+
+    #[test]
+    fn combine_records_needs_two_of_a_kind() {
+        let inventory = inv(vec![skin(
+            "A",
+            vec![rec("1", "0", 3), rec("2", "9", 2), rec("3", "0", 1)],
+        )]);
+        let one = build(
+            &inventory,
+            &Operation::CombineRecords {
+                assetids: ids(&["1"]),
+            },
+        );
+        assert_eq!(one.requests, 0);
+        assert!(one.cards.is_empty());
+        let other_type = build(
+            &inventory,
+            &Operation::CombineRecords {
+                assetids: ids(&["1", "2"]),
+            },
+        );
+        assert_eq!(other_type.requests, 0);
+        assert!(other_type.cards.is_empty());
+    }
+
+    #[test]
+    fn combine_records_across_skins_makes_a_stack_each() {
+        let inventory = inv(vec![
+            skin("A", vec![rec("1", "0", 2), rec("2", "0", 1)]),
+            skin("B", vec![rec("3", "0", 1), rec("4", "0", 1)]),
+        ]);
+        let plan = build(
+            &inventory,
+            &Operation::CombineRecords {
+                assetids: ids(&["1", "2", "3", "4"]),
+            },
+        );
+        assert_eq!(
+            plan.steps,
+            vec![
+                merge("A", rec("2", "0", 1), rec("1", "0", 2)),
+                merge("B", rec("4", "0", 1), rec("3", "0", 1)),
+            ]
+        );
+        assert_eq!(plan.queue, vec![queued("A", 3, 1), queued("B", 2, 1)]);
+        assert_eq!(
+            plan.cards,
+            vec![
+                card("1", 3, 0),
+                card("2", 0, 0),
+                card("3", 2, 0),
+                card("4", 0, 0)
+            ]
+        );
     }
 
     #[test]
@@ -509,7 +677,7 @@ mod tests {
             },
         );
         assert_eq!(plan.requests, 1);
-        assert_eq!(plan.after, vec![after("A", vec![2], 0)]);
+        assert_eq!(plan.cards, vec![card("1", 2, 0), card("2", 0, 0)]);
     }
 
     #[test]
@@ -539,8 +707,8 @@ mod tests {
             named("C", "Бета", vec![rec("3", "0", 5)]),
         ]);
         let plan = build(&inventory, &Operation::SplitAll);
-        let keys: Vec<&str> = plan.after.iter().map(|a| a.key.as_str()).collect();
-        assert_eq!(keys, vec!["C", "A", "B"]);
+        let order: Vec<&str> = plan.cards.iter().map(|c| c.assetid.as_str()).collect();
+        assert_eq!(order, vec!["3", "2", "1"]);
     }
 
     #[test]
@@ -611,28 +779,34 @@ mod tests {
 
     #[test]
     fn operation_reads_window_json() {
-        let op: Operation =
-            serde_json::from_str(r#"{"kind":"splitOff","key":"Outlaw Revolver","count":2}"#)
-                .unwrap();
+        let read = |json: &str| serde_json::from_str::<Operation>(json).unwrap();
         assert_eq!(
-            op,
+            read(r#"{"kind":"splitRecords","assetids":["1","2"]}"#),
+            Operation::SplitRecords {
+                assetids: ids(&["1", "2"])
+            }
+        );
+        assert_eq!(
+            read(r#"{"kind":"combineRecords","assetids":["3"]}"#),
+            Operation::CombineRecords {
+                assetids: ids(&["3"])
+            }
+        );
+        assert_eq!(
+            read(r#"{"kind":"splitOff","assetid":"1","count":2}"#),
             Operation::SplitOff {
-                key: "Outlaw Revolver".into(),
+                assetid: "1".into(),
                 count: 2
             }
         );
-        let op: Operation =
-            serde_json::from_str(r#"{"kind":"combineSelected","keys":["A"]}"#).unwrap();
         assert_eq!(
-            op,
+            read(r#"{"kind":"combineSelected","keys":["A"]}"#),
             Operation::CombineSelected {
                 keys: vec!["A".into()]
             }
         );
-        assert_eq!(
-            serde_json::from_str::<Operation>(r#"{"kind":"splitAll"}"#).unwrap(),
-            Operation::SplitAll
-        );
+        assert_eq!(read(r#"{"kind":"splitAll"}"#), Operation::SplitAll);
+        assert_eq!(read(r#"{"kind":"combineAll"}"#), Operation::CombineAll);
     }
 
     #[test]
@@ -645,6 +819,8 @@ mod tests {
         assert!(json.get("steps").is_none());
         assert_eq!(json["requests"], 2);
         assert_eq!(json["operation"]["kind"], "splitAll");
-        assert_eq!(json["after"][0]["singles"], 3);
+        assert_eq!(json["cards"][0]["assetid"], "1");
+        assert_eq!(json["cards"][0]["amount"], 1);
+        assert_eq!(json["cards"][0]["singles"], 2);
     }
 }

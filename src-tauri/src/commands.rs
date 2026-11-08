@@ -872,6 +872,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn vanished_record_returns_a_new_plan_instead_of_running() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(inventory_reply(3))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+        // При перечитывании записи 1001 уже нет: вместо неё другая.
+        let mut moved = inventory_body(3);
+        moved["response"]["assets"][0]["assetid"] = json!("2002");
+        Mock::given(method("GET"))
+            .and(path(INV))
+            .respond_with(ResponseTemplate::new(200).set_body_json(moved))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+        let state = state_for(&server);
+        with_token(&state).await;
+        state.load_inventory("en", NOW, |_| {}).await.unwrap();
+        let operation = Operation::SplitRecords {
+            assetids: vec!["1001".into()],
+        };
+        assert_eq!(state.preview(operation.clone()).await.unwrap().requests, 2);
+        let result = state.start(operation, "en", NOW, |_| {}).await.unwrap();
+        let StartResult::PlanChanged { plan, .. } = result else {
+            panic!("expected PlanChanged, got {result:?}");
+        };
+        assert_eq!(plan.requests, 0);
+    }
+
+    #[tokio::test]
     async fn start_without_preview_shows_the_plan_first() {
         let server = MockServer::start().await;
         Mock::given(method("GET"))
