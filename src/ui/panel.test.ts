@@ -68,7 +68,7 @@ describe('focus after Run', () => {
     records: [{ assetid: '1001', classid: 'c1', instanceid: '0', amount: 8, tradable: true, marketable: true, availableAfter: null }],
   };
   const inventory: Inventory = { skins: [skin], unreadable: [] };
-  const plan: Plan = { operation: { kind: 'splitAll' }, requests: 7, stacks: 1, queue: [{ key: 'A', amount: 8, requests: 7 }], more: 0, after: [] };
+  const plan: Plan = { operation: { kind: 'splitAll' }, requests: 7, stacks: 1, queue: [{ key: 'A', amount: 8, requests: 7 }], more: 0, cards: [] };
   const running = (patch: Partial<Extract<Panel, { kind: 'running' }>> = {}): Panel => ({
     kind: 'running',
     plan,
@@ -188,7 +188,7 @@ describe('focus after Run', () => {
 
 describe('view while the inventory is read', () => {
   const inventory: Inventory = { skins: [], unreadable: [] };
-  const plan: Plan = { operation: { kind: 'splitAll' }, requests: 7, stacks: 1, queue: [], more: 0, after: [] };
+  const plan: Plan = { operation: { kind: 'splitAll' }, requests: 7, stacks: 1, queue: [], more: 0, cards: [] };
   const run: Panel = { kind: 'running', plan, done: 0, total: 7, errors: 0, key: '', processed: [], waitUntil: null, stopping: false };
   const stateOf = (over: Partial<State> = {}): State => ({
     screen: 'main',
@@ -291,5 +291,76 @@ describe('view while the inventory is read', () => {
     expect(view(el).classes.has('load-view')).toBe(false);
     expect(view(el).classes.has('enter')).toBe(true);
     expect(fakeDocument.activeElement?.textContent).toBe(t('panel.hintTitle'));
+  });
+});
+
+describe('selection view', () => {
+  const rec = (assetid: string, amount: number) => ({
+    assetid, classid: 'c1', instanceid: '0', amount, tradable: true, marketable: true, availableAfter: null,
+  });
+  const skin: Skin = { key: 'A', name: 'Skin A', icon: null, category: null, total: 12, records: [rec('a1', 10), rec('a2', 2)] };
+  const other: Skin = { key: 'B', name: 'Skin B', icon: null, category: null, total: 1, records: [rec('b1', 1)] };
+  const inventory: Inventory = { skins: [skin, other], unreadable: [] };
+  const stateOf = (selected: string[], over: Partial<State> = {}): State => ({
+    screen: 'main',
+    lang: 'en',
+    settings: { language: null, delayMs: 1500, uiScale: 100 },
+    token: null,
+    inventory,
+    loading: false,
+    loadWaitUntil: null,
+    loadProgress: null,
+    loadStopping: false,
+    error: null,
+    tokenExpired: false,
+    filter: defaultFilter(),
+    selected,
+    anchor: null,
+    panel: { kind: 'selection' },
+    menuOpen: false,
+    settingsOpen: false,
+    ...over,
+  });
+  const mount = () => {
+    const el = new FakeEl('aside');
+    return { el, part: createPanel(el as unknown as HTMLElement) };
+  };
+
+  beforeEach(() => {
+    setLang('en');
+    vi.stubGlobal('document', fakeDocument);
+    vi.stubGlobal('HTMLElement', FakeEl);
+    vi.stubGlobal('window', { setInterval: vi.fn(), clearInterval: vi.fn(), setTimeout: vi.fn(), clearTimeout: vi.fn() });
+    fakeDocument.activeElement = null;
+  });
+
+  it('shows the hint when nothing is selected, or only entries that are gone', () => {
+    const { el, part } = mount();
+    part.update(stateOf([]));
+    expect(el.textContent).toContain(t('panel.hintTitle'));
+    part.update(stateOf(['gone']));
+    expect(el.textContent).toContain(t('panel.hintTitle'));
+  });
+
+  it('opens one card by its assetid, the entry and not the biggest one of the skin', () => {
+    const { el, part } = mount();
+    part.update(stateOf(['a2']));
+    expect(byClass(el, 'iname')[0].textContent).toBe('Skin A');
+    expect(byClass(el, 'isub')[0].textContent).toBe(t('item.stack', { count: '2' }));
+  });
+
+  it('finds the card even when the filter hides it', () => {
+    const { el, part } = mount();
+    part.update(stateOf(['b1'], { filter: { ...defaultFilter(), show: 'stacks', search: 'zzz' } }));
+    expect(byClass(el, 'iname')[0].textContent).toBe('Skin B');
+  });
+
+  it('shows several cards together and ignores the ones that are gone', () => {
+    const { el, part } = mount();
+    part.update(stateOf(['a1', 'a2', 'gone']));
+    expect(byClass(el, 'thumb')).toHaveLength(2);
+    expect(byClass(el, 'plan-h')[0].textContent).toBe(t('multi.title', { items: '2 items', pcs: t('card.total', { count: '12' }) }));
+    part.update(stateOf(['a1', 'gone']));
+    expect(byClass(el, 'iname')).toHaveLength(1);
   });
 });

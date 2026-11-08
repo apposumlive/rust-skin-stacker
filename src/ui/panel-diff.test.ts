@@ -3,7 +3,7 @@ import type { Panel } from '../store';
 import type { Inventory, Plan } from '../types';
 import { entering, focusPlace, panelStep, showsLoad, swallowsKey, takesFocus, type Shown } from './panel-diff';
 
-const plan = (): Plan => ({ operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] });
+const plan = (): Plan => ({ operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, cards: [] });
 const inventory = (): Inventory => ({ skins: [], unreadable: [] });
 
 function running(p: Plan, patch: Partial<Extract<Panel, { kind: 'running' }>> = {}): Panel {

@@ -13,7 +13,7 @@ function title(operation: Operation): string {
   return operation.kind === 'splitOff' ? t('op.splitOff', { count: fmtInt(operation.count) }) : t(`op.${operation.kind}`);
 }
 
-const isSplit = (operation: Operation) => operation.kind !== 'combineAll' && operation.kind !== 'combineSelected';
+const isSplit = (operation: Operation) => operation.kind !== 'combineAll' && operation.kind !== 'combineSelected' && operation.kind !== 'combineRecords';
 
 function skinsByKey(state: State): Map<string, Skin> {
   return new Map((state.inventory?.skins ?? []).map((skin) => [skin.key, skin]));

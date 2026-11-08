@@ -10,11 +10,11 @@ import './styles/main.css';
 import './styles/panel.css';
 import './styles/overlay.css';
 
-import { loadInventory, selectSkin, setFilter, showPlan, signIn } from './actions';
+import { loadInventory, selectCard, setFilter, showPlan, signIn } from './actions';
 import { api, inTauri, useApi } from './api';
 import { detectLang, setLang } from './i18n';
 import { isReloadKey } from './keys';
-import { visibleSkins } from './model';
+import { visibleCards } from './model';
 import { getState, initState, initialFilter, subscribe, type State } from './store';
 import { renderLogin, type Screen } from './ui/login';
 import { mountMain } from './ui/shell';
@@ -95,9 +95,9 @@ async function openDemoState(): Promise<void> {
   if (!s.inventory || demo === 'main') return;
   setFilter({ show: 'stacks' });
   if (demo === 'item') {
-    const order = visibleSkins(s.inventory, getState().filter).map((skin) => skin.key);
-    const key = order[4];
-    if (key) selectSkin(key, 'single', order);
+    const order = visibleCards(s.inventory, getState().filter).map((card) => card.record.assetid);
+    const assetid = order[4];
+    if (assetid) selectCard(assetid, 'single', order);
   }
   if (demo === 'plan') await showPlan({ kind: 'splitAll' });
 }

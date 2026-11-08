@@ -1,11 +1,11 @@
 // Чистые решения сетки: заголовок, пустое состояние, кнопка плашки ошибки, клавиши карточки. Их проверяют тесты.
 
 import { tn } from '../i18n';
-import { isInert, matches, type Filter, type SelectMode, type Show } from '../model';
+import { isInert, matches, type Card, type Filter, type SelectMode, type Show } from '../model';
 import type { Panel } from '../store';
-import type { Inventory, Skin, UiError } from '../types';
+import type { Inventory, UiError } from '../types';
 
-/** Заголовок сетки по тому, что в ней сейчас: «40 предметов», «16 предметов в стопках», «5 предметов можно собрать». */
+/** Заголовок сетки по тому, что в ней сейчас (карточек): «40 предметов», «6 стопок», «5 предметов можно собрать». */
 export function gridMeta(show: Show, count: number): string {
   return tn(`grid.meta.${show}`, count);
 }
@@ -90,24 +90,24 @@ export function processedKeys(panel: Panel): string[] {
 }
 
 /**
- * Подпись под названием карточки: `total` — штуки (скина нет в плане), `becomes` — «станет …» (ещё не тронут),
- * `now` — его обрабатывают сейчас (подсветка и «станет …»), `processed` — «обработано». «Обработано», а не «готово»:
+ * Подпись под картинкой: `none` — пусто (карточки нет в плане), `becomes` — «станет …» (ещё не тронута),
+ * `now` — её скин обрабатывают сейчас (подсветка и «станет …»), `processed` — «обработано». «Обработано», а не «готово»:
  * часть шагов могла не пройти. Текущий важнее обработанного — ключ может вернуться.
  */
-export type CardNote = 'total' | 'becomes' | 'now' | 'processed';
+export type CardNote = 'none' | 'becomes' | 'now' | 'processed';
 
 export function cardNote(key: string, planned: boolean, current: string, processed: ReadonlySet<string>): CardNote {
+  if (!planned) return 'none';
   if (current !== '' && key === current) return 'now';
-  if (!planned) return 'total';
   return processed.has(key) ? 'processed' : 'becomes';
 }
 
-/** Хэши картинок скинов в порядке сетки, начиная с индекса `from` (следующий после последнего нарисованного ряда). */
-export function iconsAfter(list: Skin[], from: number): string[] {
+/** Хэши картинок карточек в порядке сетки, начиная с индекса `from`; одну и ту же подряд не повторяет. */
+export function iconsAfter(list: Card[], from: number): string[] {
   const hashes: string[] = [];
   for (let i = from; i < list.length; i++) {
-    const icon = list[i].icon;
-    if (icon) hashes.push(icon);
+    const icon = list[i].skin.icon;
+    if (icon && icon !== hashes[hashes.length - 1]) hashes.push(icon);
   }
   return hashes;
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { setLang, t } from '../i18n';
-import { defaultFilter, type Filter } from '../model';
+import { defaultFilter, type Card, type Filter } from '../model';
 import type { Panel } from '../store';
 import type { Inventory, Plan, Skin } from '../types';
 import { bannerActionOf, bannerBusy, cardNote, currentKey, emptyStateOf, gridKey, gridMeta, iconsAfter, processedKeys } from './grid-model';
@@ -21,10 +21,11 @@ describe('grid header', () => {
   it('names what the grid shows now, not the stacks of the whole inventory', () => {
     setLang('ru');
     expect(gridMeta('all', 40)).toBe('40\u00a0предметов');
-    expect(gridMeta('stacks', 16)).toBe('16\u00a0предметов в стопках');
+    expect(gridMeta('stacks', 16)).toBe('16\u00a0стопок');
     expect(gridMeta('dupes', 5)).toBe('5\u00a0предметов можно собрать');
     expect(gridMeta('all', 1)).toBe('1\u00a0предмет');
-    expect(gridMeta('stacks', 3)).toBe('3\u00a0предмета в стопках');
+    expect(gridMeta('stacks', 3)).toBe('3\u00a0стопки');
+    expect(gridMeta('stacks', 1)).toBe('1\u00a0стопка');
     expect(gridMeta('dupes', 22)).toBe('22\u00a0предмета можно собрать');
     expect(gridMeta('dupes', 21)).toBe('21\u00a0предмет можно собрать');
     expect(gridMeta('dupes', 11)).toBe('11\u00a0предметов можно собрать');
@@ -34,7 +35,8 @@ describe('grid header', () => {
     setLang('en');
     expect(gridMeta('all', 1)).toBe('1\u00a0item');
     expect(gridMeta('all', 40)).toBe('40\u00a0items');
-    expect(gridMeta('stacks', 16)).toBe('16\u00a0items in stacks');
+    expect(gridMeta('stacks', 1)).toBe('1\u00a0stack');
+    expect(gridMeta('stacks', 16)).toBe('16\u00a0stacks');
     expect(gridMeta('dupes', 1)).toBe('1\u00a0item can be combined');
     expect(gridMeta('dupes', 5)).toBe('5\u00a0items can be combined');
   });
@@ -150,7 +152,7 @@ describe('banner buttons while something runs', () => {
   const idle: Panel = { kind: 'selection' };
   const running: Panel = {
     kind: 'running',
-    plan: { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] },
+    plan: { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, cards: [] },
     done: 0,
     total: 4,
     errors: 0,
@@ -247,7 +249,7 @@ describe('card keys', () => {
 });
 
 describe('card being processed', () => {
-  const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] };
+  const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, cards: [] };
 
   it('is the key of the current request while the run goes, and none otherwise', () => {
     expect(currentKey({ kind: 'running', plan, done: 1, total: 4, errors: 0, key: 'A', processed: [], waitUntil: null, stopping: false })).toBe('A');
@@ -258,28 +260,30 @@ describe('card being processed', () => {
 });
 
 describe('card note during a run', () => {
-  const plan: Plan = { operation: { kind: 'splitAll' }, requests: 6, stacks: 3, queue: [], more: 0, after: [] };
+  const plan: Plan = { operation: { kind: 'splitAll' }, requests: 6, stacks: 3, queue: [], more: 0, cards: [] };
   const done = new Set(['A']);
 
-  it('says «becomes …» on a skin that is not touched yet', () => {
+  it('says «becomes …» on a card that is not touched yet', () => {
     expect(cardNote('C', true, 'B', done)).toBe('becomes');
     expect(cardNote('C', true, '', new Set())).toBe('becomes');
   });
 
-  it('marks the skin being processed now', () => {
+  it('marks a card whose skin is being processed now', () => {
     expect(cardNote('B', true, 'B', done)).toBe('now');
     // Ключ вернулся: подсветка важнее отметки «обработано».
     expect(cardNote('A', true, 'A', done)).toBe('now');
   });
 
-  it('says «processed» on a skin whose steps have passed, not «becomes …»', () => {
+  it('says «processed» on a card whose skin steps have passed, not «becomes …»', () => {
     expect(cardNote('A', true, 'B', done)).toBe('processed');
     expect(cardNote('A', true, '', done)).toBe('processed');
   });
 
-  it('shows the pieces on a skin that is not in the plan', () => {
-    expect(cardNote('Z', false, 'B', done)).toBe('total');
-    expect(cardNote('Z', false, '', new Set(['Z']))).toBe('total');
+  it('leaves the line empty on a card that is not in the plan, even if its skin is current or processed', () => {
+    expect(cardNote('Z', false, 'B', done)).toBe('none');
+    expect(cardNote('Z', false, '', new Set(['Z']))).toBe('none');
+    expect(cardNote('B', false, 'B', done)).toBe('none');
+    expect(cardNote('A', false, '', done)).toBe('none');
   });
 
   it('takes the processed keys only from a running panel, with the same empty list otherwise', () => {
@@ -299,21 +303,30 @@ describe('card note during a run', () => {
 });
 
 describe('icons to prefetch', () => {
-  const withIcon = (key: string, icon: string | null): Skin => ({ ...skin(key), icon });
+  const cardOf = (key: string, icon: string | null): Card => ({
+    skin: { ...skin(key), icon },
+    record: { assetid: key, classid: 'c', instanceid: '0', amount: 1, tradable: true, marketable: true, availableAfter: null },
+  });
 
   it('takes the hashes in grid order, starting right after the last drawn card', () => {
-    const list = [withIcon('a', 'ha'), withIcon('b', 'hb'), withIcon('c', 'hc'), withIcon('d', 'hd')];
+    const list = [cardOf('a', 'ha'), cardOf('b', 'hb'), cardOf('c', 'hc'), cardOf('d', 'hd')];
     expect(iconsAfter(list, 0)).toEqual(['ha', 'hb', 'hc', 'hd']);
     expect(iconsAfter(list, 2)).toEqual(['hc', 'hd']);
   });
 
-  it('skips skins without a picture', () => {
-    const list = [withIcon('a', 'ha'), withIcon('b', null), withIcon('c', 'hc')];
+  it('skips cards without a picture', () => {
+    const list = [cardOf('a', 'ha'), cardOf('b', null), cardOf('c', 'hc')];
     expect(iconsAfter(list, 0)).toEqual(['ha', 'hc']);
   });
 
+  it('does not ask for the same picture twice in a row: the entries of one skin share it', () => {
+    const list = [cardOf('a', 'ha'), cardOf('a2', 'ha'), cardOf('a3', 'ha'), cardOf('b', 'hb'), cardOf('b2', 'hb'), cardOf('a4', 'ha')];
+    expect(iconsAfter(list, 0)).toEqual(['ha', 'hb', 'ha']);
+    expect(iconsAfter(list, 1)).toEqual(['ha', 'hb', 'ha']);
+  });
+
   it('gives nothing when everything is already drawn', () => {
-    const list = [withIcon('a', 'ha'), withIcon('b', 'hb')];
+    const list = [cardOf('a', 'ha'), cardOf('b', 'hb')];
     expect(iconsAfter(list, 2)).toEqual([]);
     expect(iconsAfter(list, 5)).toEqual([]);
     expect(iconsAfter([], 0)).toEqual([]);

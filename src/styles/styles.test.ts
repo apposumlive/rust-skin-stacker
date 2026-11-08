@@ -118,17 +118,36 @@ describe('layout', () => {
     expect(mainCss).not.toMatch(/\.opt\.long\s*\{[^}]*(font-size|flex-wrap)/);
   });
 
-  it('lets only the last card pill shrink, with an ellipsis instead of a letter cut in half', () => {
-    // Плашки стопок («×5») не сжимаются; последняя («3 по одному» или «+N») сжимается и обрезается многоточием.
-    const pill = rule(mainCss, '.pill');
-    expect(prop(pill, 'flex')).toBe('none');
-    expect(prop(pill, 'white-space')).toBe('nowrap');
-    expect(prop(pill, 'font-size')).toBe('12px');
-    const last = rule(mainCss, '.pill:last-child');
-    expect(prop(last, 'flex-shrink')).toBe('1');
-    expect(prop(last, 'min-width')).toBe('0');
-    expect(prop(last, 'overflow')).toBe('hidden');
-    expect(prop(last, 'text-overflow')).toBe('ellipsis');
+  it('puts the stack count in the corner of the picture', () => {
+    expect(prop(rule(mainCss, '.imgbox'), 'position')).toBe('relative');
+    const qty = rule(mainCss, '.qty');
+    expect(prop(qty, 'position')).toBe('absolute');
+    expect(prop(qty, 'right')).toBe('6px');
+    expect(prop(qty, 'bottom')).toBe('6px');
+    expect(prop(qty, 'font-size')).toBe('12px');
+    expect(prop(qty, 'white-space')).toBe('nowrap');
+    expect(mainCss).not.toMatch(/\.(pill|layout)\b/);
+  });
+
+  it('keeps the note under the picture on one line with an ellipsis', () => {
+    const sub = rule(mainCss, '.card .sub');
+    expect(prop(sub, 'white-space')).toBe('nowrap');
+    expect(prop(sub, 'overflow')).toBe('hidden');
+    expect(prop(sub, 'text-overflow')).toBe('ellipsis');
+  });
+
+  it('fits the name, the picture and the note into the card height', () => {
+    const px = (css: string, selector: string, name: string) => parseFloat(prop(rule(css, selector), name));
+    const card = px(tokensCss, ':root', '--card-h');
+    const padding = rule(mainCss, '.card').match(/padding:\s*(\d+)px \d+px (\d+)px/)!;
+    const border = 1.5 * 2;
+    const nameLine = 13 * 1.5;
+    const used =
+      Number(padding[1]) + Number(padding[2]) + border + nameLine +
+      px(mainCss, '.imgbox', 'margin-top') + px(mainCss, '.imgbox', 'height') +
+      px(mainCss, '.card .sub', 'margin-top') + px(mainCss, '.card .sub', 'height');
+    expect(card).toBe(192);
+    expect(used).toBeLessThanOrEqual(card);
   });
 
   it('makes the big picture smaller in a low window', () => {

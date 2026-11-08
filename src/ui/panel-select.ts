@@ -1,11 +1,11 @@
-// Правая панель, пока операции нет: подсказка, один скин, несколько скинов.
+// Правая панель, пока операции нет: подсказка, одна карточка, несколько карточек.
 
 import { clearSelection, showPlan } from '../actions';
 import { api, asUiError } from '../api';
 import { h, icon, type Child } from '../dom';
 import { estimateSeconds, fmtDate, fmtDuration, fmtInt } from '../format';
 import { errorText, t, tn } from '../i18n';
-import { apartRecords, canCombine, clampCount, hasStack, layoutOf, layoutText, splitCapacity } from '../model';
+import { apartRecords, canCombine, canCombineCards, canSplitCards, cardLayout, clampCount, hasStack, layoutText, type Card } from '../model';
 import type { State } from '../store';
 import type { Inventory, Skin } from '../types';
 import { itemImage } from './item-image';
@@ -66,7 +66,7 @@ const PREVIEW_DELAY_MS = 150;
  * Блок «Отделить по одному». Строку «Станет: …» считает ядро, поэтому она совпадает с планом.
  * Если отделять можно только одну штуку (`capacity` 1), выбирать не из чего: ползунка и счётчика нет, остаются строка и кнопка.
  */
-function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTMLElement; button: HTMLButtonElement } {
+function splitOff(assetid: string, capacity: number, delayMs: number): { section: HTMLElement; button: HTMLButtonElement } {
   let count = 1;
   let seq = 0;
   let timer = 0;
@@ -84,7 +84,7 @@ function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTM
   const label = h('span', {}, t('item.splitN', { count }));
   const button = h(
     'button',
-    { class: 'btn pri', type: 'button', onclick: () => void showPlan({ kind: 'splitOff', key: skin.key, count }) },
+    { class: 'btn pri', type: 'button', onclick: () => void showPlan({ kind: 'splitOff', assetid, count }) },
     icon('arrows-split-2'),
     label,
   );
@@ -109,17 +109,18 @@ function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTM
   /** Спрашивает у ядра, что станет; ответ на прошлое число отбрасывается. */
   function refresh(): void {
     const mine = ++seq;
-    api.preview({ kind: 'splitOff', key: skin.key, count }).then(
+    api.preview({ kind: 'splitOff', assetid, count }).then(
       (plan) => {
-        const after = plan.after[0];
+        const after = plan.cards[0];
         // Строка уже пуста: set() убрал её при смене числа. Пустой ответ ничего к ней не добавляет.
         if (mine !== seq || !after) return;
+        const layout = cardLayout(after);
         // «Станет:» и стоимость приглушены, раскладка выделена — как на макете.
         say(
           [
             t('item.becomes'),
             ' ',
-            h('b', {}, layoutText(after.stacks, after.singles, true)),
+            h('b', {}, layoutText(layout.stacks, layout.singles, true)),
             ' · ',
             t('item.cost', { requests: tn('plan.requests', plan.requests), time: fmtDuration(estimateSeconds(plan.requests, delayMs)) }),
           ],
@@ -164,12 +165,10 @@ function splitOff(skin: Skin, capacity: number, delayMs: number): { section: HTM
   return { section, button };
 }
 
-export function itemView(skin: Skin, state: State): HTMLElement {
-  const layout = layoutOf(skin);
-  const main = skin.records[0];
+export function itemView({ skin, record }: Card, state: State): HTMLElement {
   const apart = apartRecords(skin).length;
-  const capacity = splitCapacity(skin);
-  const split = capacity > 0 ? splitOff(skin, capacity, state.settings.delayMs) : null;
+  const capacity = record.amount - 1;
+  const split = capacity > 0 ? splitOff(record.assetid, capacity, state.settings.delayMs) : null;
   const combine = h(
     'button',
     {
@@ -186,38 +185,40 @@ export function itemView(skin: Skin, state: State): HTMLElement {
     [
       picture(skin, 256, 'big'),
       mainHeading('iname', skin.name),
-      h('p', { class: 'isub num' }, `${t('card.total', { count: fmtInt(skin.total) })} · ${layoutText(layout.stacks, layout.singles, true)}`),
+      h('p', { class: 'isub num' }, record.amount > 1 ? t('item.stack', { count: fmtInt(record.amount) }) : t('item.single')),
       h(
         'dl',
         { class: 'kv' },
-        fact(t('item.marketable'), yesNo(main?.marketable ?? false, main?.availableAfter ?? null)),
-        fact(t('item.tradable'), yesNo(main?.tradable ?? false, main?.availableAfter ?? null)),
+        fact(t('item.marketable'), yesNo(record.marketable, record.availableAfter)),
+        fact(t('item.tradable'), yesNo(record.tradable, record.availableAfter)),
+        fact(t('item.skinTotal'), h('b', { class: 'num' }, t('card.total', { count: fmtInt(skin.total) }))),
         fact(t('item.records'), h('b', { class: 'num' }, fmtInt(skin.records.length))),
       ),
       apart ? h('p', { class: 'note' }, icon('alert-triangle'), tn('item.apart', apart)) : null,
       split ? split.section : h('p', { class: 'note muted' }, icon('circle-check'), t('item.nothingToSplit')),
     ],
     [
-      split ? h('div', { class: 'acts' }, split.button, combine) : h('div', { class: 'acts one' }, combine),
+      // Кнопки друг под другом: «Собрать все такие» в половину узкой панели не помещается.
+      h('div', { class: 'acts one' }, split?.button ?? null, combine),
       h('p', { class: 'foot' }, t('item.foot')),
     ],
   );
 }
 
-export function multiView(skins: Skin[]): HTMLElement {
-  const pcs = skins.reduce((n, s) => n + s.total, 0);
-  const keys = skins.map((s) => s.key);
-  const shown = skins.slice(0, 8);
+export function multiView(cards: Card[]): HTMLElement {
+  const pcs = cards.reduce((n, c) => n + c.record.amount, 0);
+  const assetids = cards.map((c) => c.record.assetid);
+  const shown = cards.slice(0, 8);
   return panelView(
     'multi',
     [
       h(
         'div',
         { class: 'thumbs' },
-        ...shown.map((s) => h('div', { class: 'thumb', title: s.name }, itemImage(s.icon, 96))),
-        skins.length > shown.length ? h('div', { class: 'thumb' }, t('multi.more', { count: fmtInt(skins.length - shown.length) })) : null,
+        ...shown.map((c) => h('div', { class: 'thumb', title: c.skin.name }, itemImage(c.skin.icon, 96))),
+        cards.length > shown.length ? h('div', { class: 'thumb' }, t('multi.more', { count: fmtInt(cards.length - shown.length) })) : null,
       ),
-      mainHeading('plan-h', t('multi.title', { items: tn('multi.items', skins.length), pcs: t('card.total', { count: fmtInt(pcs) }) })),
+      mainHeading('plan-h', t('multi.title', { items: tn('multi.items', cards.length), pcs: t('card.total', { count: fmtInt(pcs) }) })),
       h('button', { class: 'link', type: 'button', onclick: clearSelection }, t('multi.clear')),
     ],
     [
@@ -226,13 +227,13 @@ export function multiView(skins: Skin[]): HTMLElement {
         { class: 'acts one' },
         h(
           'button',
-          { class: 'btn pri', type: 'button', disabled: !skins.some(hasStack), onclick: () => void showPlan({ kind: 'splitSelected', keys }) },
+          { class: 'btn pri', type: 'button', disabled: !canSplitCards(cards), onclick: () => void showPlan({ kind: 'splitRecords', assetids }) },
           icon('arrows-split-2'),
           t('multi.split'),
         ),
         h(
           'button',
-          { class: 'btn sec', type: 'button', disabled: !skins.some(canCombine), onclick: () => void showPlan({ kind: 'combineSelected', keys }) },
+          { class: 'btn sec', type: 'button', disabled: !canCombineCards(cards), onclick: () => void showPlan({ kind: 'combineRecords', assetids }) },
           icon('stack-push'),
           t('multi.combine'),
         ),

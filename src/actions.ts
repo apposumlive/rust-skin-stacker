@@ -2,7 +2,7 @@
 
 import { api, asUiError } from './api';
 import { detectLang, setLang, type Lang } from './i18n';
-import { categoriesOf, nextSelection, totals, visibleSkins, type Filter, type SelectMode } from './model';
+import { categoriesOf, nextSelection, totals, visibleCards, type Filter, type SelectMode } from './model';
 import { getState, setState, type Panel, type State } from './store';
 import type { Inventory, Operation, Plan, Progress, Settings, TokenInfo, UiError } from './types';
 
@@ -22,21 +22,21 @@ function showError(error: UiError): void {
 }
 
 /**
- * Новый инвентарь и то, что от него зависит. Из выбора, якоря и отметок типов уходят исчезнувшие ключи и типы.
+ * Новый инвентарь и то, что от него зависит. Из выбора и якоря уходят исчезнувшие assetid, из отметок — исчезнувшие типы.
  * Если «Показать» оставляет сетку пустой, хотя предметы есть (после «Разделить всё» при «Стопках»), — снова «Все»:
  * иначе кажется, что предметы пропали. Неизменившиеся массив выбора и объект фильтра остаются теми же.
  */
 export function adoptInventory(inventory: Inventory): Pick<State, 'inventory' | 'selected' | 'anchor' | 'filter'> {
   const s = getState();
-  const keys = new Set(inventory.skins.map((skin) => skin.key));
+  const ids = new Set(inventory.skins.flatMap((skin) => skin.records.map((r) => r.assetid)));
   const known = new Set(categoriesOf(inventory).map((c) => c.id));
-  const selected = s.selected.every((k) => keys.has(k)) ? s.selected : s.selected.filter((k) => keys.has(k));
-  const anchor = s.anchor !== null && keys.has(s.anchor) ? s.anchor : null;
+  const selected = s.selected.every((id) => ids.has(id)) ? s.selected : s.selected.filter((id) => ids.has(id));
+  const anchor = s.anchor !== null && ids.has(s.anchor) ? s.anchor : null;
   let filter: Filter = s.filter;
   // Отметка типа, которого в новом инвентаре нет, снять нечем: флажка для неё не нарисовано, а сетка пуста.
   const categories = filter.categories.filter((id) => known.has(id));
   if (categories.length !== filter.categories.length) filter = { ...filter, categories };
-  if (filter.show !== 'all' && inventory.skins.length > 0 && visibleSkins(inventory, filter).length === 0) {
+  if (filter.show !== 'all' && inventory.skins.length > 0 && visibleCards(inventory, filter).length === 0) {
     filter = { ...filter, show: 'all' };
   }
   return { inventory, selected, anchor, filter };
@@ -97,9 +97,9 @@ export function setFilter(patch: Partial<Filter>): void {
 }
 
 /** Выбор меняет панель на «выбор», кроме времени, когда идёт операция. */
-export function selectSkin(key: string, mode: SelectMode, order: string[]): void {
+export function selectCard(assetid: string, mode: SelectMode, order: string[]): void {
   const s = getState();
-  const next = nextSelection({ selected: s.selected, anchor: s.anchor }, key, mode, order);
+  const next = nextSelection({ selected: s.selected, anchor: s.anchor }, assetid, mode, order);
   setState({ ...next, panel: s.panel.kind === 'running' ? s.panel : { kind: 'selection' } });
 }
 

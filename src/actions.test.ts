@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  adoptInventory, dismissError, forgetToken, loadInventory, runPlan, saveSettings, setUiScale, showPlan, signIn, stopLoad, stopRun,
-  switchLang,
+  adoptInventory, dismissError, forgetToken, loadInventory, runPlan, saveSettings, selectCard, setUiScale, showPlan, signIn, stopLoad,
+  stopRun, switchLang,
 } from './actions';
 import { useApi, type Api } from './api';
 import { errorText, setLang } from './i18n';
-import { visibleSkins } from './model';
+import { visibleCards } from './model';
 import { getState, initState, initialFilter, setState, type Panel, type State } from './store';
 import type { Inventory, InvRecord, Plan, Progress, RunOutcome, Settings, Skin, StartResult } from './types';
 
@@ -28,7 +28,7 @@ const invIn = (...pairs: Array<[key: string, category: string]>): Inventory => (
   unreadable: [],
 });
 
-const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] };
+const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, cards: [] };
 const newPlan: Plan = { ...plan, requests: 2 };
 const outcome = (reason: RunOutcome['reason'] = 'finished'): RunOutcome => ({ reason, done: 4, errors: 0, total: 4 });
 const settings: Settings = { language: null, delayMs: 1500, uiScale: 100 };
@@ -582,8 +582,8 @@ describe('a result that arrives after «Forget token»', () => {
 describe('forgetToken', () => {
   it('resets the window to the login screen', async () => {
     setState({
-      selected: ['A'],
-      anchor: 'A',
+      selected: ['A-1'],
+      anchor: 'A-1',
       tokenExpired: true,
       error: { code: 'network', status: null },
       menuOpen: true,
@@ -617,12 +617,12 @@ describe('forgetToken', () => {
 });
 
 describe('loadInventory', () => {
-  it('keeps only the selected skins that are still in the inventory', async () => {
-    setState({ selected: ['A', 'B', 'GONE'], anchor: 'B' });
+  it('keeps only the selected cards that are still in the inventory', async () => {
+    setState({ selected: ['A-1', 'B-1', 'GONE'], anchor: 'B-1' });
     useApi(fakeApi({ loadInventory: async () => inv('A', 'C') }));
     await loadInventory();
     const s = getState();
-    expect(s.selected).toEqual(['A']);
+    expect(s.selected).toEqual(['A-1']);
     expect(s.loading).toBe(false);
     expect(s.panel).toEqual({ kind: 'selection' });
   });
@@ -644,7 +644,7 @@ describe('loadInventory', () => {
       await loadInventory();
       const s = getState();
       expect(s.filter.categories).toEqual([]);
-      expect(visibleSkins(other, s.filter).map((k) => k.key)).toEqual(['B', 'C']);
+      expect(visibleCards(other, s.filter).map((c) => c.skin.key)).toEqual(['B', 'C']);
     });
 
     it('clears the types when the inventory has none at all', async () => {
@@ -1212,7 +1212,7 @@ describe('adoptInventory', () => {
     await runPlan(plan);
     const s = getState();
     expect(s.filter.show).toBe('all');
-    expect(visibleSkins(s.inventory!, s.filter).map((k) => k.key)).toEqual(['A', 'B']);
+    expect(visibleCards(s.inventory!, s.filter).map((c) => c.skin.key)).toEqual(['A', 'B']);
   });
 
   it('does the same when the plan changed', async () => {
@@ -1257,25 +1257,33 @@ describe('adoptInventory', () => {
     expect(adoptInventory({ skins: [], unreadable: [] }).filter.show).toBe('stacks');
   });
 
-  it('drops the selected keys and the anchor that vanished after a run', async () => {
-    setState({ selected: ['A', 'B'], anchor: 'B' });
+  it('drops the selected assetids and the anchor that vanished after a run', async () => {
+    setState({ selected: ['A-1', 'B-1'], anchor: 'B-1' });
     useApi(fakeApi({ start: async () => finished('finished', inv('A')) }));
     await runPlan(plan);
-    expect(getState()).toMatchObject({ selected: ['A'], anchor: null });
+    expect(getState()).toMatchObject({ selected: ['A-1'], anchor: null });
+  });
+
+  it('drops a card whose entry merged into another one, though its skin is still there', () => {
+    const merged: Inventory = { skins: [{ ...skin('A', 5), records: [rec('A-1', 5)] }], unreadable: [] };
+    setState({ selected: ['A-1', 'A-2'], anchor: 'A-2' });
+    const next = adoptInventory(merged);
+    expect(next.selected).toEqual(['A-1']);
+    expect(next.anchor).toBeNull();
   });
 
   it('keeps the same selection array and the anchor when nothing vanished', () => {
-    const selected = ['A'];
-    setState({ selected, anchor: 'A' });
+    const selected = ['A-1'];
+    setState({ selected, anchor: 'A-1' });
     const next = adoptInventory(inv('A', 'C'));
     expect(next.selected).toBe(selected);
-    expect(next.anchor).toBe('A');
+    expect(next.anchor).toBe('A-1');
   });
 
   it('leaves the selection alone when the core sends no inventory after the run', async () => {
-    setState({ selected: ['B'], anchor: 'B' });
+    setState({ selected: ['B-1'], anchor: 'B-1' });
     await runPlan(plan);
-    expect(getState()).toMatchObject({ selected: ['B'], anchor: 'B' });
+    expect(getState()).toMatchObject({ selected: ['B-1'], anchor: 'B-1' });
   });
 
   it('counts the stacks of the fresh inventory for the result, and none without it', async () => {
@@ -1493,5 +1501,44 @@ describe('signIn', () => {
     signIn(token);
     await loadInventory();
     expect(getState().inventory).toBe(fresh);
+  });
+});
+
+describe('selectCard', () => {
+  const order = ['a', 'b', 'c', 'd'];
+
+  it('selects by assetid: click, Ctrl and Shift', () => {
+    selectCard('b', 'single', order);
+    expect(getState()).toMatchObject({ selected: ['b'], anchor: 'b' });
+    selectCard('d', 'toggle', order);
+    expect(getState().selected).toEqual(['b', 'd']);
+    selectCard('a', 'range', order);
+    expect(getState()).toMatchObject({ selected: ['a', 'b', 'c', 'd'], anchor: 'd' });
+  });
+
+  it('shows the selection, but leaves a running operation alone', () => {
+    setState({ panel: { kind: 'plan', plan, changed: false } });
+    selectCard('a', 'single', order);
+    expect(getState().panel).toEqual({ kind: 'selection' });
+    const running = { kind: 'running' } as Panel;
+    setState({ panel: running });
+    selectCard('b', 'single', order);
+    expect(getState().panel).toBe(running);
+    expect(getState().selected).toEqual(['b']);
+  });
+});
+
+describe('showPlan with record operations', () => {
+  it.each<Plan['operation']>([
+    { kind: 'splitRecords', assetids: ['a', 'b'] },
+    { kind: 'combineRecords', assetids: ['a', 'b'] },
+    { kind: 'splitOff', assetid: 'a', count: 2 },
+    { kind: 'combineSelected', keys: ['A'] },
+  ])('asks the core about %o and shows its plan', async (operation) => {
+    const preview = vi.fn(async (op: Plan['operation']): Promise<Plan> => ({ ...plan, operation: op, cards: [{ assetid: 'a', amount: 3, singles: 2 }] }));
+    useApi(fakeApi({ preview }));
+    await showPlan(operation);
+    expect(preview).toHaveBeenCalledWith(operation);
+    expect(getState().panel).toMatchObject({ kind: 'plan', plan: { operation, cards: [{ assetid: 'a', amount: 3, singles: 2 }] } });
   });
 });

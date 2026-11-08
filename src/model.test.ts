@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { setLang } from './i18n';
 import {
-  apartRecords, canCombine, categoriesOf, clampCount, counts, defaultFilter, isInert, layoutOf, layoutText, matches,
-  nextSelection, pillsOf, splitCapacity, statLines, totals, visibleSkins,
+  apartRecords, canCombine, canCombineCards, canSplitCards, cardLayout, categoriesOf, clampCount, combinable, counts, defaultFilter,
+  isInert, layoutText, matches, nextSelection, statLines, totals, visibleCards, type Card,
 } from './model';
 import type { Inventory, InvRecord, Skin } from './types';
 
@@ -16,16 +16,49 @@ function skin(key: string, amounts: number[], category = 'steamcat.weapon'): Ski
 }
 
 const inv = (skins: Skin[]): Inventory => ({ skins, unreadable: [] });
+const ids = (cards: Card[]) => cards.map((c) => c.record.assetid);
+/** Ключи скинов карточек по порядку, без повторов. */
+const keysOf = (cards: Card[]) => [...new Set(cards.map((c) => c.skin.key))];
 
 describe('model', () => {
   beforeEach(() => setLang('ru'));
 
-  it('describes the layout of a skin', () => {
-    const s = skin('A', [5, 1, 4, 1]);
-    expect(layoutOf(s)).toEqual({ stacks: [5, 4], singles: 2 });
-    expect(splitCapacity(s)).toBe(7);
-    expect(canCombine(s)).toBe(true);
+  it('tells whether a skin has entries that combine', () => {
+    expect(canCombine(skin('A', [5, 1, 4, 1]))).toBe(true);
     expect(canCombine(skin('B', [3]))).toBe(false);
+  });
+
+  it('finds the entries that combine with another entry of the same skin', () => {
+    const s: Skin = { ...skin('A', []), records: [rec('1', 3), rec('2', 2, '9'), rec('3', 1)], total: 6 };
+    expect(s.records.map((r) => combinable(s, r))).toEqual([true, false, true]);
+    const lone = skin('B', [3]);
+    expect(combinable(lone, lone.records[0])).toBe(false);
+  });
+
+  it('lays out a card after an operation', () => {
+    expect(cardLayout({ assetid: 'a', amount: 7, singles: 3 })).toEqual({ stacks: [7], singles: 3 });
+    expect(cardLayout({ assetid: 'a', amount: 1, singles: 4 })).toEqual({ stacks: [], singles: 5 });
+    expect(cardLayout({ assetid: 'a', amount: 12, singles: 0 })).toEqual({ stacks: [12], singles: 0 });
+  });
+
+  it('can split cards when one of them is a stack', () => {
+    const [a, b] = visibleCards(inv([skin('A', [3, 1])]), defaultFilter());
+    expect(canSplitCards([a])).toBe(true);
+    expect(canSplitCards([b])).toBe(false);
+    expect(canSplitCards([])).toBe(false);
+  });
+
+  it('can combine cards only when two of them share a skin and a type', () => {
+    const a = skin('A', [3, 1]);
+    const other: Skin = { ...skin('B', []), records: [rec('b1', 2), rec('b2', 1, '9')], total: 3 };
+    const cards = visibleCards(inv([a, other]), defaultFilter());
+    const by = (id: string) => cards.find((c) => c.record.assetid === id)!;
+    expect(canCombineCards([by('A-0'), by('A-1')])).toBe(true);
+    // Один скин, но разные типы; один тип, но разные скины.
+    expect(canCombineCards([by('b1'), by('b2')])).toBe(false);
+    expect(canCombineCards([by('A-0'), by('b1')])).toBe(false);
+    expect(canCombineCards([by('A-0')])).toBe(false);
+    expect(canCombineCards([])).toBe(false);
   });
 
   it('finds entries that will not combine with the main stack', () => {
@@ -42,41 +75,32 @@ describe('model', () => {
     expect(layoutText([6], 2, true)).toBe('stack ×6 and 2\u00a0singles');
   });
 
-  it('makes at most three stack pills', () => {
-    expect(pillsOf({ stacks: [9, 8, 7, 6, 5], singles: 3 })).toEqual([
-      { text: '×9', stack: true },
-      { text: '×8', stack: true },
-      { text: '×7', stack: true },
-      { text: '+2', stack: true },
-      { text: '3\u00a0по одному', stack: false },
-    ]);
-  });
-
-  it('filters by search, show and type, then sorts', () => {
+  it('makes a card per entry: skins by total then name, entries in the skin order', () => {
     const i = inv([skin('Alpha', [1]), skin('Bravo', [3, 1]), skin('Charlie', [2], 'steamcat.clothing'), skin('Delta', [1, 1])]);
     const f = defaultFilter();
     expect(f).toEqual({ search: '', show: 'all', categories: [], sort: 'amount', untradable: false });
-    expect(visibleSkins(i, f).map((s) => s.key)).toEqual(['Bravo', 'Charlie', 'Delta', 'Alpha']);
-    expect(visibleSkins(i, { ...f, show: 'stacks' }).map((s) => s.key)).toEqual(['Bravo', 'Charlie']);
-    expect(visibleSkins(i, { ...f, show: 'dupes' }).map((s) => s.key)).toEqual(['Bravo', 'Delta']);
-    expect(visibleSkins(i, { ...f, categories: ['steamcat.clothing'] }).map((s) => s.key)).toEqual(['Charlie']);
-    expect(visibleSkins(i, { ...f, search: 'ALP' }).map((s) => s.key)).toEqual(['Alpha']);
-    expect(visibleSkins(i, { ...f, sort: 'name' }).map((s) => s.key)).toEqual(['Alpha', 'Bravo', 'Charlie', 'Delta']);
+    expect(ids(visibleCards(i, f))).toEqual(['Bravo-0', 'Bravo-1', 'Charlie-0', 'Delta-0', 'Delta-1', 'Alpha-0']);
+    expect(ids(visibleCards(i, { ...f, sort: 'name' }))).toEqual(['Alpha-0', 'Bravo-0', 'Bravo-1', 'Charlie-0', 'Delta-0', 'Delta-1']);
+    expect(ids(visibleCards(i, { ...f, show: 'stacks' }))).toEqual(['Bravo-0', 'Charlie-0']);
+    expect(ids(visibleCards(i, { ...f, show: 'dupes' }))).toEqual(['Bravo-0', 'Bravo-1', 'Delta-0', 'Delta-1']);
+    expect(ids(visibleCards(i, { ...f, categories: ['steamcat.clothing'] }))).toEqual(['Charlie-0']);
+    expect(ids(visibleCards(i, { ...f, search: 'ALP' }))).toEqual(['Alpha-0']);
+    expect(visibleCards(i, f)[0].skin).toBe(i.skins[1]);
   });
 
-  it('shows under «Можно собрать» and counts only items whose entries combine', () => {
+  it('shows under «Можно собрать» and counts only entries that combine', () => {
     const apart: Skin = { ...skin('Apart', []), records: [rec('a1', 2), rec('a2', 1, '9')], total: 3 };
     const mixed: Skin = { ...skin('Mixed', []), records: [rec('m1', 3), rec('m2', 2, '9'), rec('m3', 1)], total: 6 };
     const i = inv([apart, skin('Single', [4]), skin('Pair', [2, 1]), mixed]);
     expect(canCombine(apart)).toBe(false);
     expect(canCombine(mixed)).toBe(true);
-    expect(visibleSkins(i, { ...defaultFilter(), show: 'dupes' }).map((s) => s.key)).toEqual(['Mixed', 'Pair']);
-    expect(counts(i, defaultFilter())).toEqual({ all: 4, stacks: 4, dupes: 2, inert: 0 });
+    expect(ids(visibleCards(i, { ...defaultFilter(), show: 'dupes' }))).toEqual(['m1', 'm3', 'Pair-0', 'Pair-1']);
+    expect(counts(i, defaultFilter())).toEqual({ all: 8, stacks: 5, dupes: 4, inert: 0 });
   });
 
   it('counts filters and totals', () => {
     const i: Inventory = { skins: [skin('A', [5, 1]), skin('B', [1]), skin('C', [1, 1])], unreadable: [{ assetid: null, amount: 2 }] };
-    expect(counts(i, defaultFilter())).toEqual({ all: 3, stacks: 1, dupes: 2, inert: 0 });
+    expect(counts(i, defaultFilter())).toEqual({ all: 5, stacks: 1, dupes: 4, inert: 0 });
     expect(totals(i)).toEqual({ items: 11, records: 6, stacks: 1, unreadable: 1, untradable: 0 });
   });
 
@@ -206,19 +230,19 @@ describe('untradable items with nothing to do', () => {
     expect(matches(drop, shown)).toBe(true);
     expect(matches(plain, defaultFilter())).toBe(true);
     expect(matches(later, defaultFilter())).toBe(true);
-    expect(visibleSkins(i, defaultFilter()).map((s) => s.key)).toEqual(['LockedStack', 'LockedPair', 'Mixed', 'Later', 'Plain']);
-    expect(visibleSkins(i, shown).map((s) => s.key)).toEqual(['LockedStack', 'LockedPair', 'Mixed', 'Drop', 'Drop2', 'Later', 'Plain']);
+    expect(keysOf(visibleCards(i, defaultFilter()))).toEqual(['LockedStack', 'LockedPair', 'Mixed', 'Later', 'Plain']);
+    expect(keysOf(visibleCards(i, shown))).toEqual(['LockedStack', 'LockedPair', 'Mixed', 'Drop', 'Drop2', 'Later', 'Plain']);
     // Поиск, «Показать» и тип работают поверх переключателя.
-    expect(visibleSkins(i, { ...defaultFilter(), search: 'drop' }).map((s) => s.key)).toEqual([]);
-    expect(visibleSkins(i, { ...shown, search: 'drop' }).map((s) => s.key)).toEqual(['Drop', 'Drop2']);
-    expect(visibleSkins(i, { ...shown, show: 'stacks' }).map((s) => s.key)).toEqual(['LockedStack']);
-    expect(visibleSkins(i, { ...shown, show: 'dupes' }).map((s) => s.key)).toEqual(['LockedPair']);
-    expect(visibleSkins(i, { ...shown, categories: ['steamcat.clothing'] }).map((s) => s.key)).toEqual([]);
+    expect(keysOf(visibleCards(i, { ...defaultFilter(), search: 'drop' }))).toEqual([]);
+    expect(keysOf(visibleCards(i, { ...shown, search: 'drop' }))).toEqual(['Drop', 'Drop2']);
+    expect(keysOf(visibleCards(i, { ...shown, show: 'stacks' }))).toEqual(['LockedStack']);
+    expect(keysOf(visibleCards(i, { ...shown, show: 'dupes' }))).toEqual(['LockedPair']);
+    expect(keysOf(visibleCards(i, { ...shown, categories: ['steamcat.clothing'] }))).toEqual([]);
   });
 
-  it('counts «All» without the hidden items and always counts the inert ones in full', () => {
-    expect(counts(i, defaultFilter())).toEqual({ all: 5, stacks: 1, dupes: 1, inert: 2 });
-    expect(counts(i, shown)).toEqual({ all: 7, stacks: 1, dupes: 1, inert: 2 });
+  it('counts «All» without the hidden entries and always counts the inert ones in full', () => {
+    expect(counts(i, defaultFilter())).toEqual({ all: 7, stacks: 1, dupes: 2, inert: 2 });
+    expect(counts(i, shown)).toEqual({ all: 9, stacks: 1, dupes: 2, inert: 2 });
   });
 
   it('counts the pieces of inert items in the totals, and everything else as before', () => {

@@ -3,7 +3,7 @@
 // main.ts подключает его только при import.meta.env.DEV и без Tauri.
 
 import type { Api } from '../api';
-import type { Inventory, InvRecord, Operation, Plan, Progress, Settings, Skin, SkinAfter } from '../types';
+import type { CardAfter, Inventory, InvRecord, Operation, Plan, Progress, Settings, Skin } from '../types';
 import { AUTO, UI_SCALES } from '../zoom';
 import items from './demo-items.json';
 
@@ -61,63 +61,83 @@ function demoInventory(): Inventory {
 }
 
 /** Упрощённая копия plan::build из ядра — только для демо. Очередь полная: по ней демо идёт шагами. */
-function demoQueue(inventory: Inventory, operation: Operation): { requests: number; queue: Plan['queue']; after: SkinAfter[] } {
-  const keys =
-    operation.kind === 'splitSelected' || operation.kind === 'combineSelected'
-      ? new Set(operation.keys)
+function demoQueue(inventory: Inventory, operation: Operation): { requests: number; queue: Plan['queue']; cards: CardAfter[] } {
+  const ids = (list: string[]) => new Set(list);
+  const keys = operation.kind === 'combineSelected' ? new Set(operation.keys) : null;
+  const chosen =
+    operation.kind === 'splitRecords' || operation.kind === 'combineRecords'
+      ? ids(operation.assetids)
       : operation.kind === 'splitOff'
-        ? new Set([operation.key])
+        ? ids([operation.assetid])
         : null;
+  const split = operation.kind === 'splitAll' || operation.kind === 'splitRecords' || operation.kind === 'splitOff';
   const skins = inventory.skins
     .filter((s) => !keys || keys.has(s.key))
-    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
-  const split = operation.kind === 'splitAll' || operation.kind === 'splitSelected' || operation.kind === 'splitOff';
+    .sort((a, b) => b.total - a.total || a.key.localeCompare(b.key));
   let requests = 0;
   const queue: Plan['queue'] = [];
-  const after: SkinAfter[] = [];
+  const cards: CardAfter[] = [];
   for (const skin of skins) {
+    const records = skin.records.filter((r) => !chosen || chosen.has(r.assetid));
     if (split) {
       let left = operation.kind === 'splitOff' ? operation.count : Infinity;
-      let singles = 0;
-      const stacks: number[] = [];
-      const startRequests = requests;
-      for (const record of skin.records) {
+      for (const record of records) {
         const n = Math.min(record.amount - 1, left);
         left -= n;
+        if (n <= 0) continue;
         requests += n;
-        singles += n;
-        if (n > 0) queue.push({ key: skin.key, amount: record.amount, requests: n });
-        if (record.amount - n === 1) singles += 1;
-        else stacks.push(record.amount - n);
+        queue.push({ key: skin.key, amount: record.amount, requests: n });
+        cards.push({ assetid: record.assetid, amount: record.amount - n, singles: n });
       }
-      if (requests > startRequests) after.push({ key: skin.key, stacks: stacks.sort((a, b) => b - a), singles });
-    } else if (skin.records.length > 1) {
-      requests += skin.records.length - 1;
-      queue.push({ key: skin.key, amount: skin.total, requests: skin.records.length - 1 });
-      after.push({ key: skin.key, stacks: skin.total > 1 ? [skin.total] : [], singles: skin.total > 1 ? 0 : 1 });
+    } else {
+      // Группы (classid, instanceid) собираются в самую большую запись группы.
+      const groups = new Map<string, InvRecord[]>();
+      for (const record of records) {
+        const type = `${record.classid}/${record.instanceid}`;
+        groups.set(type, [...(groups.get(type) ?? []), record]);
+      }
+      for (const group of groups.values()) {
+        if (group.length < 2) continue;
+        const [target, ...rest] = [...group].sort((a, b) => b.amount - a.amount || Number(a.assetid) - Number(b.assetid));
+        const sum = group.reduce((n, r) => n + r.amount, 0);
+        requests += rest.length;
+        queue.push({ key: skin.key, amount: sum, requests: rest.length });
+        cards.push({ assetid: target.assetid, amount: sum, singles: 0 });
+        for (const record of rest) cards.push({ assetid: record.assetid, amount: 0, singles: 0 });
+      }
     }
   }
-  return { requests, queue, after };
+  return { requests, queue, cards };
 }
 
 function demoPlan(inventory: Inventory, operation: Operation): Plan {
-  const { requests, queue, after } = demoQueue(inventory, operation);
-  return { operation, requests, stacks: queue.length, queue: queue.slice(0, 5), more: Math.max(0, queue.length - 5), after };
+  const { requests, queue, cards } = demoQueue(inventory, operation);
+  return { operation, requests, stacks: queue.length, queue: queue.slice(0, 5), more: Math.max(0, queue.length - 5), cards };
 }
 
 /** Ключ скина каждого шага по порядку — как шаги ядра. */
 const demoSteps = (inventory: Inventory, operation: Operation): string[] =>
   demoQueue(inventory, operation).queue.flatMap((item) => Array<string>(item.requests).fill(item.key));
 
+// Номер для новых записей после разделения: общий на все запуски демо, чтобы assetid не повторялись.
+let nextId = 5000;
+
+/** Меняет инвентарь по плану: amount 0 — запись исчезла, иначе amount; singles — новые записи по одной. */
 function applyPlan(inventory: Inventory, plan: Plan): Inventory {
-  const byKey = new Map(plan.after.map((a) => [a.key, a]));
-  let id = 5000;
+  const byId = new Map(plan.cards.map((c) => [c.assetid, c]));
   const skins = inventory.skins.map((skin) => {
-    const after = byKey.get(skin.key);
-    const base = skin.records[0];
-    if (!after || !base) return skin;
-    const amounts = [...after.stacks, ...Array<number>(after.singles).fill(1)];
-    return { ...skin, records: amounts.map((amount) => ({ ...base, assetid: String(++id), amount })) };
+    if (!skin.records.some((r) => byId.has(r.assetid))) return skin;
+    const records: InvRecord[] = [];
+    for (const record of skin.records) {
+      const after = byId.get(record.assetid);
+      if (!after) records.push(record);
+      else {
+        if (after.amount > 0) records.push({ ...record, amount: after.amount });
+        for (let i = 0; i < after.singles; i++) records.push({ ...record, assetid: String(++nextId), amount: 1 });
+      }
+    }
+    records.sort((a, b) => b.amount - a.amount);
+    return { ...skin, records };
   });
   return { ...inventory, skins };
 }

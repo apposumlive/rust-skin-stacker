@@ -16,7 +16,7 @@ const skin: Skin = { key: 'A', name: 'Skin A', icon: null, category: null, total
 const inventory: Inventory = { skins: [skin], unreadable: [] };
 const state = { inventory, settings: { language: null, delayMs: 1500, uiScale: 100 } } as State;
 
-const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [{ key: 'A', amount: 8, requests: 4 }], more: 0, after: [] };
+const plan: Plan = { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [{ key: 'A', amount: 8, requests: 4 }], more: 0, cards: [] };
 const empty: Plan = { ...plan, requests: 0, stacks: 0, queue: [] };
 
 type Running = Extract<Panel, { kind: 'running' }>;
@@ -326,5 +326,29 @@ describe('result view', () => {
     expect(swapped.textContent).toContain(t('result.mismatch', { name: 'Skin A', before: '4', after: '5' }));
     const lost = resultView(result({ reconciliation: { before: 9, after: 8, mismatches: [] } }));
     expect(lost.textContent).toContain(t('result.checkBad'));
+  });
+});
+
+describe('plan of the record operations', () => {
+  const heading = (op: Plan['operation'], over: Partial<Plan> = {}) =>
+    text(byClass(planView({ ...plan, operation: op, ...over }, false, state), 'plan-h')[0]);
+  const text = (el: FakeEl) => el.textContent;
+  const sub = (op: Plan['operation']) => text(byClass(planView({ ...plan, operation: op }, false, state), 'isub')[0]);
+
+  it('titles each operation and explains it under the title', () => {
+    expect(heading({ kind: 'splitRecords', assetids: ['1001'] })).toBe(t('op.splitRecords'));
+    expect(heading({ kind: 'combineRecords', assetids: ['1001'] })).toBe(t('op.combineRecords'));
+    expect(heading({ kind: 'combineSelected', keys: ['A'] })).toBe(t('op.combineSelected'));
+    expect(heading({ kind: 'splitOff', assetid: '1001', count: 3 })).toBe(t('op.splitOff', { count: '3' }));
+    expect(sub({ kind: 'splitRecords', assetids: ['1001'] })).toBe(t('op.splitRecords.sub'));
+    expect(sub({ kind: 'combineRecords', assetids: ['1001'] })).toBe(t('op.combineRecords.sub'));
+    expect(sub({ kind: 'combineSelected', keys: ['A'] })).toBe(t('op.combineSelected.sub'));
+  });
+
+  it('says there is nothing to combine for a combining operation and nothing to split for a splitting one', () => {
+    const note = (op: Plan['operation']) => planView({ ...empty, operation: op }, false, state).textContent;
+    expect(note({ kind: 'combineRecords', assetids: ['1001'] })).toContain(t('plan.nothingCombine'));
+    expect(note({ kind: 'combineSelected', keys: ['A'] })).toContain(t('plan.nothingCombine'));
+    expect(note({ kind: 'splitRecords', assetids: ['1001'] })).toContain(t('plan.nothingSplit'));
   });
 });

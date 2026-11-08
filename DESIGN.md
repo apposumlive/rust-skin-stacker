@@ -10,7 +10,7 @@ colors:
   image-well: "#20253a"
   hairline: "#262b3a"
   control-hover: "#2b3144"
-  pill-selected: "#2c3246"
+  badge-selected: "#2c3246"
   box-border: "#3d4357"
   scrim: "rgba(5, 6, 10, 0.55)"
   text: "#eceef5"
@@ -191,15 +191,15 @@ components:
     backgroundColor: "{colors.image-well}"
     rounded: "{rounded.sm}"
     height: "96px"
-  pill:
+  stack-badge:
     backgroundColor: "{colors.card-raised}"
-    textColor: "{colors.text-muted}"
+    textColor: "{colors.text}"
     typography: "{typography.micro}"
     rounded: "{rounded.xs}"
     padding: "0 7px"
     height: "20px"
-  pill-selected-card:
-    backgroundColor: "{colors.pill-selected}"
+  stack-badge-selected-card:
+    backgroundColor: "{colors.badge-selected}"
   section-block:
     backgroundColor: "{colors.card}"
     textColor: "{colors.text}"
@@ -294,11 +294,11 @@ A near-black blue-grey ground with slightly lighter, slightly bluer surfaces ste
 - **Slate Panel** (#161922, `--panel`): the right-hand panel, the settings drawer and the login card.
 - **Ink Card** (#1b1f2b, `--card`): cards, the search field, section blocks, menus, the sort control.
 - **Lifted Ink** (#1f2432, `--card-hover`): card hover.
-- **Raised Slate** (#232838, `--card-2`): selected card, secondary buttons, bulk toggles, pills, progress track.
+- **Raised Slate** (#232838, `--card-2`): selected card, secondary buttons, bulk toggles, stack badges, progress track.
 - **Dusk Well** (#20253a, `--img`): the well behind every skin picture and thumbnail.
 - **Hairline Slate** (#262b3a, `--line`): 1px dividers between columns, rows and around floating surfaces.
 - **Pressed Slate** (#2b3144): hover fill for secondary buttons, bulk toggles and stepper buttons.
-- **Selected Pill** (#2c3246): pill fill on a selected card.
+- **Selected Badge** (#2c3246): stack badge fill on a selected card.
 - **Checkbox Edge** (#3d4357): resting border of filter checkboxes.
 - **Scrim** (rgba(5, 6, 10, 0.55)): backdrop behind the settings drawer.
 - **Mist White** (#eceef5, `--text`): primary text.
@@ -331,13 +331,13 @@ A near-black blue-grey ground with slightly lighter, slightly bluer surfaces ste
 - **Body Small** (500, 13px, 1.45): card names (700), key-value rows, queue rows, account line, preview line, status line.
 - **Caption** (500, 13px, 1.5): card sub-line, notes, footers, option counts, inventory totals, disclaimer.
 - **Label** (800, 12px, 0.08em, uppercase): column headings ("Show", "Type"), the queue heading, field labels.
-- **Micro** (700, 12px): layout pills on cards; slider ticks are 12px at weight 500.
+- **Micro** (700, 12px): stack badges ("×8") on cards; slider ticks are 12px at weight 500.
 - **Mono** (500, 13px, 1.5): the token paste field.
 
 Weight 600 appears once (mismatch lines in the result); 500 is the running weight and 700 to 800 carry structure.
 
 ### Named Rules
-**The Tabular Numbers Rule.** Every count, quantity, duration, token lifetime, slider tick and progress figure uses tabular numerals (`font-variant-numeric: tabular-nums`, the `.num` class; cards and pills set it directly) so columns of figures hold their width as they change.
+**The Tabular Numbers Rule.** Every count, quantity, duration, token lifetime, slider tick and progress figure uses tabular numerals (`font-variant-numeric: tabular-nums`, the `.num` class; cards and stack badges set it directly) so columns of figures hold their width as they change.
 
 **The Self-Hosted Type Rule.** Manrope and Tabler icons come from npm and ship inside the build. Never load a font or icon set from a CDN.
 
@@ -377,7 +377,7 @@ State is shown with a solid ring, not a glow: a 1.5px indigo border or inset rin
 
 ## Shapes
 
-Softly rounded rectangles on a small ladder: 5px for checkboxes and pills, 8px for image wells, thumbnails, the logo tile, language button and stepper buttons, 9px for top-bar controls (bulk toggles, search, icon buttons), 10px for buttons, fields, the menu and the banner, 12px for cards, section blocks, the large picture and info blocks, 16px for the sign-in card. Circles (50%) are used for the status dot, radio boxes, step numbers and the slider thumb. Smaller one-offs: 3px slider track, 4px progress bar, 6px queue thumbnail.
+Softly rounded rectangles on a small ladder: 5px for checkboxes and stack badges, 8px for image wells, thumbnails, the logo tile, language button and stepper buttons, 9px for top-bar controls (bulk toggles, search, icon buttons), 10px for buttons, fields, the menu and the banner, 12px for cards, section blocks, the large picture and info blocks, 16px for the sign-in card. Circles (50%) are used for the status dot, radio boxes, step numbers and the slider thumb. Smaller one-offs: 3px slider track, 4px progress bar, 6px queue thumbnail.
 
 Regions are divided by 1px hairlines (top bar bottom, column edges, fact rows, floating surfaces). Interactive outlines are 1.5px: a transparent border on cards that turns indigo when selected, the checkbox edge, and field borders that turn indigo on focus. Pictures are centred and contained (never cropped) inside an image well; a missing picture shows an outline photo-off icon in Dim Grey.
 
@@ -408,12 +408,12 @@ Quiet, compact controls on dark: solid fills, no gradients, one filled button pe
 - **Token field:** monospace 13px, Night Ground fill, 1.5px hairline border, 10px radius, resizes vertically, about three lines (76px min); focus turns the border indigo; the status line below is 13px, green when valid and red when not.
 
 ### Skin Card (signature)
-A 192px tile: 13px / 700 name (one line, ellipsis), 13px sub-line, a 96px image well with a contained 84px picture, and a row of 20px pills describing the layout (stack pills such as "x8" in Mist White, "3 singles" in Fog Grey). Stack pills never shrink; when the row runs out of room, the last pill (singles or "+N") shrinks and ends in an ellipsis instead of being cut mid-letter.
+One card per inventory entry, as in the Steam inventory: two single ponchos are two cards side by side, a stack of eight is one card. Cards of one skin stand together, stacks largest first, then singles. A 192px tile: 13px / 700 name (one line, ellipsis), a 96px image well with a contained 84px picture, and a 13px note line under the well. A stack carries a 20px badge "×8" in the bottom-right corner of the well (Raised Slate, Mist White 12px / 700, 5px radius); a single item carries no number. The note line is empty until a plan is open.
 - **Default:** Ink Card, 12px radius, 10px padding (12px bottom), 1.5px transparent border. Hover: Lifted Ink (#1f2432).
-- **Selected:** 1.5px Signal Indigo border and Raised Slate fill; pills turn to Selected Pill (#2c3246).
-- **Preview:** while a plan is open, affected cards write "becomes ..." in Text Indigo 700 and unaffected cards dim to 35% opacity.
-- **Now processing:** 1.5px Bright Indigo border plus an inset 1px ring, brighter than selected.
-- **Processed:** the sub-line reads "processed" in Fog Grey.
+- **Selected:** 1.5px Signal Indigo border and Raised Slate fill; the stack badge turns to Selected Badge (#2c3246).
+- **Preview:** while a plan is open, the cards it touches write what becomes of them in Text Indigo 700 ("becomes ×15", "becomes ×7 and 3 singles", "goes into a stack"); cards it does not touch dim to 35% opacity.
+- **Now processing:** the touched cards of the skin being processed get a 1.5px Bright Indigo border plus an inset 1px ring, brighter than selected.
+- **Processed:** the note line reads "processed" in Fog Grey.
 - **Loading:** skeleton cards with a 1.4s linear shimmer between Ink Card and Raised Slate.
 - **Focus:** the 2px ring is drawn inside the card (offset -3px).
 

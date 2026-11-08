@@ -3,7 +3,7 @@
 
 import { h } from '../dom';
 import type { State } from '../store';
-import type { Skin } from '../types';
+import type { Card } from '../model';
 import { entering, focusPlace, panelStep, showsLoad, shownOf, swallowsKey, takesFocus, type Shown } from './panel-diff';
 import { loadingView, patchLoading } from './panel-load';
 import { patchRunning, planView, resultView, runningView } from './panel-run';
@@ -24,10 +24,11 @@ function view(state: State, tick: (fn: () => void) => void): HTMLElement {
     case 'result':
       return resultView(panel);
     case 'selection': {
-      const byKey = new Map(inventory.skins.map((skin) => [skin.key, skin]));
-      const skins = state.selected.map((key) => byKey.get(key)).filter((skin): skin is Skin => skin !== undefined);
-      if (skins.length === 1) return itemView(skins[0], state);
-      if (skins.length > 1) return multiView(skins);
+      const byId = new Map<string, Card>();
+      for (const skin of inventory.skins) for (const record of skin.records) byId.set(record.assetid, { skin, record });
+      const cards = state.selected.map((id) => byId.get(id)).filter((card): card is Card => card !== undefined);
+      if (cards.length === 1) return itemView(cards[0], state);
+      if (cards.length > 1) return multiView(cards);
       return hintView(inventory);
     }
   }

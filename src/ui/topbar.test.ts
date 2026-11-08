@@ -33,7 +33,7 @@ function stateOf(over: Partial<State> = {}): State {
 
 const running: Panel = {
   kind: 'running',
-  plan: { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] },
+  plan: { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, cards: [] },
   done: 0,
   total: 4,
   errors: 0,
@@ -56,7 +56,7 @@ afterEach(() => {
 describe('bulk buttons: which one is lit', () => {
   const split: Panel = {
     kind: 'plan',
-    plan: { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, after: [] },
+    plan: { operation: { kind: 'splitAll' }, requests: 4, stacks: 1, queue: [], more: 0, cards: [] },
     changed: false,
   };
 

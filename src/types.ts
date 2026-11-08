@@ -43,9 +43,10 @@ export interface Inventory {
 export type Operation =
   | { kind: 'splitAll' }
   | { kind: 'combineAll' }
-  | { kind: 'splitSelected'; keys: string[] }
   | { kind: 'combineSelected'; keys: string[] }
-  | { kind: 'splitOff'; key: string; count: number };
+  | { kind: 'splitRecords'; assetids: string[] }
+  | { kind: 'combineRecords'; assetids: string[] }
+  | { kind: 'splitOff'; assetid: string; count: number };
 
 export interface QueueItem {
   key: string;
@@ -53,9 +54,10 @@ export interface QueueItem {
   requests: number;
 }
 
-export interface SkinAfter {
-  key: string;
-  stacks: number[];
+/** Что станет с затронутой записью: `amount` — что в ней останется (0 — уходит в другую стопку), `singles` — отделённые штуки. */
+export interface CardAfter {
+  assetid: string;
+  amount: number;
   singles: number;
 }
 
@@ -65,7 +67,7 @@ export interface Plan {
   stacks: number;
   queue: QueueItem[];
   more: number;
-  after: SkinAfter[];
+  cards: CardAfter[];
 }
 
 export type Progress =
