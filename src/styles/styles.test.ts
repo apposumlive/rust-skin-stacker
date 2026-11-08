@@ -2,7 +2,8 @@
 // закреплённые кнопки панели и число колонок сетки в окне наименьшего размера (1024×640).
 
 import { describe, expect, it } from 'vitest';
-import { columnsFor, GAP, MIN_CARD_WIDTH } from '../ui/virtual';
+import { CARD_IMAGE_SIZE } from '../ui/item-image';
+import { CARD_HEIGHT, columnsFor, GAP, MIN_CARD_WIDTH } from '../ui/virtual';
 import baseCss from './base.css?raw';
 import loginCss from './login.css?raw';
 import mainCss from './main.css?raw';
@@ -136,18 +137,33 @@ describe('layout', () => {
     expect(prop(sub, 'text-overflow')).toBe('ellipsis');
   });
 
-  it('fits the name, the picture and the note into the card height', () => {
+  it('lets the picture take the room under the name, and the plan note take its share only when shown', () => {
+    // Под картинкой нет пустой полосы: плитка тянется на всё место, картинка заполняет её с полями.
     const px = (css: string, selector: string, name: string) => parseFloat(prop(rule(css, selector), name));
     const card = px(tokensCss, ':root', '--card-h');
-    const padding = rule(mainCss, '.card').match(/padding:\s*(\d+)px \d+px (\d+)px/)!;
+    expect(card).toBe(CARD_HEIGHT);
+    const cardRule = rule(mainCss, '.card');
+    expect(prop(cardRule, 'display')).toBe('flex');
+    expect(prop(cardRule, 'flex-direction')).toBe('column');
+    const box = rule(mainCss, '.imgbox');
+    expect(prop(box, 'flex')).toBe('1');
+    expect(prop(box, 'min-height')).toBe('0');
+    expect(box).not.toMatch(/(^|[;\s])height\s*:/);
+    const img = rule(mainCss, '.imgbox img');
+    expect(prop(img, 'position')).toBe('absolute');
+    expect(prop(img, 'object-fit')).toBe('contain');
+    const inset = px(mainCss, '.imgbox img', 'inset');
+    expect(prop(rule(mainCss, '.card .sub'), 'flex')).toBe('none');
+
+    const padding = cardRule.match(/padding:\s*(\d+)px \d+px (\d+)px/)!;
     const border = 1.5 * 2;
     const nameLine = 13 * 1.5;
-    const used =
-      Number(padding[1]) + Number(padding[2]) + border + nameLine +
-      px(mainCss, '.imgbox', 'margin-top') + px(mainCss, '.imgbox', 'height') +
-      px(mainCss, '.card .sub', 'margin-top') + px(mainCss, '.card .sub', 'height');
-    expect(card).toBe(192);
-    expect(used).toBeLessThanOrEqual(card);
+    const well = card - Number(padding[1]) - Number(padding[2]) - border - nameLine - px(mainCss, '.imgbox', 'margin-top');
+    const note = px(mainCss, '.card .sub', 'margin-top') + px(mainCss, '.card .sub', 'height');
+    // Без плана картинка крупнее прежних 84 px, но не больше исходных 128 px; с подписью плана не мельче 72 px.
+    expect(well - 2 * inset).toBeGreaterThan(84);
+    expect(well - 2 * inset).toBeLessThanOrEqual(CARD_IMAGE_SIZE);
+    expect(well - note - 2 * inset).toBeGreaterThanOrEqual(72);
   });
 
   it('makes the big picture smaller in a low window', () => {

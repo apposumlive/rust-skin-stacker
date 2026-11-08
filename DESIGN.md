@@ -103,7 +103,7 @@ spacing:
   side-width: "340px"
   drawer-width: "380px"
   card-min-width: "160px"
-  card-height: "192px"
+  card-height: "168px"
 components:
   button-primary:
     backgroundColor: "{colors.indigo}"
@@ -182,7 +182,7 @@ components:
     typography: "{typography.body-sm}"
     rounded: "{rounded.lg}"
     padding: "10px 10px 12px"
-    height: "192px"
+    height: "168px"
   skin-card-hover:
     backgroundColor: "{colors.card-hover}"
   skin-card-selected:
@@ -190,7 +190,7 @@ components:
   image-well:
     backgroundColor: "{colors.image-well}"
     rounded: "{rounded.sm}"
-    height: "96px"
+    padding: "6px"
   stack-badge:
     backgroundColor: "{colors.card-raised}"
     textColor: "{colors.text}"
@@ -347,7 +347,7 @@ A desktop window with a fixed frame: a 60px top bar, then three columns under it
 
 **Interface scale.** Settings offer Auto (the default) and 100, 110, 125 and 150% (Ctrl+= and Ctrl+− step through them, starting from what Auto gives now; Ctrl+0 returns to Auto). Auto goes by the screen height in logical pixels: 125% from 1400px (a 1440px screen at 100% system scaling), 110% from 1150px, 100% below. The window opens at 1440 x 900 so that Auto at 125% still leaves 1152 x 720 CSS pixels, above the narrow layout. The scale zooms the whole window (the webview), not the CSS: type, cards and spacing grow together, every size in this document stays in CSS pixels, and the virtual grid keeps counting in them. The window never gets smaller than 1024 x 640 CSS pixels: in a small window the applied scale drops by itself to the largest step that still fits and comes back when the window grows.
 
-The card grid is virtual: only visible rows are in the DOM, so inventories of thousands stay quick. Columns are `floor((width + 12) / (160 + 12))`, so cards are at least 160px wide, 12px apart and exactly 192px tall. That gives four columns at 1280px and three at 1024px. Rows are shifted with a transform and scroll anchoring is off.
+The card grid is virtual: only visible rows are in the DOM, so inventories of thousands stay quick. Columns are `floor((width + 12) / (160 + 12))`, so cards are at least 160px wide, 12px apart and exactly 168px tall. That gives four columns at 1280px and three at 1024px. Rows are shifted with a transform and scroll anchoring is off.
 
 Spacing is a hand-set rhythm of even pixel steps rather than a token scale: 4, 6, 8, 10, 12, 14, 16, 18, 20 and 22px all recur. The frontmatter lists the main steps (4, 8, 12, 16, 20) and the structural sizes. Column padding is 16px (filters), 16 to 18px (content, side), 20px (top bar sides). Controls range from 30px (steppers, language button) through 36 to 40px (icon buttons, bulk toggles, fields) to 44px (buttons); the Run button is 50px.
 
@@ -408,7 +408,7 @@ Quiet, compact controls on dark: solid fills, no gradients, one filled button pe
 - **Token field:** monospace 13px, Night Ground fill, 1.5px hairline border, 10px radius, resizes vertically, about three lines (76px min); focus turns the border indigo; the status line below is 13px, green when valid and red when not.
 
 ### Skin Card (signature)
-One card per inventory entry, as in the Steam inventory: two single ponchos are two cards side by side, a stack of eight is one card. Cards of one skin stand together, stacks largest first, then singles. A 192px tile: 13px / 700 name (one line, ellipsis), a 96px image well with a contained 84px picture, and a 13px note line under the well. A stack carries a 20px badge "×8" in the bottom-right corner of the well (Raised Slate, Mist White 12px / 700, 5px radius); a single item carries no number. The note line is empty until a plan is open.
+One card per inventory entry, as in the Steam inventory: two single ponchos are two cards side by side, a stack of eight is one card. Cards of one skin stand together, stacks largest first, then singles. A 168px tile laid out as a column: 13px / 700 name (one line, ellipsis), then an image well that takes all the remaining height, with the picture contained 6px inside it (about 104px). There is no empty strip under the well. A stack carries a 20px badge "×8" in the bottom-right corner of the well (Raised Slate, Mist White 12px / 700, 5px radius); a single item carries no number. While a plan is open, a 13px note line appears under the well of each card it touches, and that well gives up 24px for it; otherwise the note line takes no room.
 - **Default:** Ink Card, 12px radius, 10px padding (12px bottom), 1.5px transparent border. Hover: Lifted Ink (#1f2432).
 - **Selected:** 1.5px Signal Indigo border and Raised Slate fill; the stack badge turns to Selected Badge (#2c3246).
 - **Preview:** while a plan is open, the cards it touches write what becomes of them in Text Indigo 700 ("becomes ×15", "becomes ×7 and 3 singles", "goes into a stack"); cards it does not touch dim to 35% opacity.

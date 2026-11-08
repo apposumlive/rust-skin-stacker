@@ -1,7 +1,7 @@
 // Расчёт видимых рядов виртуальной сетки. Чистые функции — их проверяют тесты.
 
 /** Совпадает с --card-h в styles/tokens.css. */
-export const CARD_HEIGHT = 192;
+export const CARD_HEIGHT = 168;
 export const GAP = 12;
 /** Как на макете: при окне 1280 px в сетку (≈694 px с полосой прокрутки) входят 4 колонки, при 1024 px — 2. */
 export const MIN_CARD_WIDTH = 160;

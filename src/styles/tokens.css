@@ -19,7 +19,7 @@
   --warn: #f2b84b;
   --bad: #f0625f;
   --bad-bg: rgba(240, 98, 95, 0.12);
-  --card-h: 192px;
+  --card-h: 168px;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   color-scheme: dark;
 }

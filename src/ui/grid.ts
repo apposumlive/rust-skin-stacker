@@ -43,7 +43,7 @@ interface Slot {
 /** Новая карточка: постоянные части (название, картинка, число стопки) строятся один раз, остальное — patchSlot. */
 function makeSlot(card: Card, index: number): Slot {
   const { skin, record } = card;
-  const sub = h('div', { class: 'sub' });
+  const sub = h('div', { class: 'sub', hidden: true });
   const imgbox = h('div', { class: 'imgbox' }, itemImage(skin.icon, CARD_IMAGE_SIZE));
   if (record.amount > 1) {
     imgbox.append(h('span', { class: 'qty' }, h('span', { class: 'sr-only' }, `${tn('layout.stackWord', 1)} `), `×${fmtInt(record.amount)}`));
@@ -104,7 +104,10 @@ function patchSlot(
   if (slot.change !== change || slot.note !== note) {
     slot.change = change;
     slot.note = note;
-    slot.sub.replaceChildren(subOf(change, note));
+    const text = subOf(change, note);
+    slot.sub.replaceChildren(text);
+    // Пустая подпись не занимает места: картинка тогда крупнее.
+    slot.sub.hidden = text === '';
   }
 }
 
