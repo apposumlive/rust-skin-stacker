@@ -213,7 +213,7 @@ export function createMockApi(): Api {
       };
     },
     async openTokenPage() {
-      window.open('https://steamcommunity.com/pointssummary/ajaxgetasyncconfig', '_blank', 'noopener');
+      window.open('https://store.steampowered.com/pointssummary/ajaxgetasyncconfig', '_blank', 'noopener');
     },
     // В обычном браузере зум окна не меняем и в журнал не пишем: только запоминаем (атрибут data-demo-zoom).
     async setZoom(factor) {

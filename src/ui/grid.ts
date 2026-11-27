@@ -138,6 +138,8 @@ export function createGrid(el: HTMLElement): Part {
   let lastInventory: State['inventory'] = null;
   let lastFilter: State['filter'] | null = null;
   let lastLoading: boolean | null = null;
+  let lastSelected: State['selected'] | null = null;
+  let lastPanel: State['panel'] | null = null;
   let lastBanner = '';
   let bannerAction: HTMLButtonElement | null = null;
   let cols = 1;
@@ -339,12 +341,16 @@ export function createGrid(el: HTMLElement): Part {
         emptyButton.textContent = emptyAction ? t(EMPTY_BUTTON[emptyAction]) : '';
       }
       paintBanner(s);
-      if (s.loading !== lastLoading) {
+      const loadingChanged = s.loading !== lastLoading;
+      if (loadingChanged) {
         lastLoading = s.loading;
         cards.setAttribute('aria-busy', String(s.loading));
         cards.setAttribute('aria-label', t(s.loading ? 'grid.loading' : 'grid.title'));
       }
-      render();
+      const gridChanged = listChanged || loadingChanged || s.selected !== lastSelected || s.panel !== lastPanel;
+      lastSelected = s.selected;
+      lastPanel = s.panel;
+      if (gridChanged) render();
       if (listChanged) prefetchAhead();
     },
     destroy() {

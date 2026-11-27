@@ -83,10 +83,19 @@ pub struct Mismatch {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CountDiff {
+    pub before: u64,
+    pub after: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Reconciliation {
     pub before: u64,
     pub after: u64,
     pub mismatches: Vec<Mismatch>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unreadable: Option<CountDiff>,
 }
 
 /// Весь инвентарь Rust: все страницы, затем разбор.
@@ -249,10 +258,17 @@ pub fn reconcile(before: &Inventory, after: &Inventory) -> Reconciliation {
             after,
         })
         .collect();
+    let unreadable_before: u64 = before.unreadable.iter().map(|u| u64::from(u.amount)).sum();
+    let unreadable_after: u64 = after.unreadable.iter().map(|u| u64::from(u.amount)).sum();
+    let unreadable = (unreadable_before != unreadable_after).then_some(CountDiff {
+        before: unreadable_before,
+        after: unreadable_after,
+    });
     Reconciliation {
         before: before.total(),
         after: after.total(),
         mismatches,
+        unreadable,
     }
 }
 
@@ -798,8 +814,35 @@ mod tests {
             Reconciliation {
                 before: 3,
                 after: 3,
-                mismatches: vec![]
+                mismatches: vec![],
+                unreadable: None,
             }
+        );
+    }
+
+    #[test]
+    fn reconcile_reports_unreadable_diff() {
+        let before = Inventory {
+            skins: vec![],
+            unreadable: vec![Unreadable {
+                assetid: Some("1".into()),
+                amount: 2,
+            }],
+        };
+        let after = Inventory {
+            skins: vec![],
+            unreadable: vec![],
+        };
+        let r = reconcile(&before, &after);
+        assert_eq!(r.before, 2);
+        assert_eq!(r.after, 0);
+        assert!(r.mismatches.is_empty());
+        assert_eq!(
+            r.unreadable,
+            Some(CountDiff {
+                before: 2,
+                after: 0
+            })
         );
     }
 

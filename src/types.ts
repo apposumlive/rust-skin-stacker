@@ -95,6 +95,7 @@ export interface Reconciliation {
   before: number;
   after: number;
   mismatches: Mismatch[];
+  unreadable?: { before: number; after: number };
 }
 
 export type StartResult =

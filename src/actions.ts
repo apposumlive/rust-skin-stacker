@@ -12,8 +12,9 @@ const TOKEN_CODES = new Set(['tokenExpired', 'tokenRejected', 'noToken']);
 // в окно не попадает: ни инвентарь, ни ошибка (например, noToken чтения, оборванного новым токеном).
 let session = 0;
 
-// Язык сменили во время запуска: инвентарь перечитается на новом языке, когда придёт результат.
+// Язык сменили во время запуска или загрузки: инвентарь перечитается на новом языке, когда текущее действие закончится.
 let rereadAfterRun = false;
+let rereadAfterLoad = false;
 
 /** Ошибка токена — плашка «Токен истёк», любая другая — плашка с текстом ошибки. */
 function showError(error: UiError): void {
@@ -70,8 +71,13 @@ export async function loadInventory(options: { keepPanel?: boolean } = {}): Prom
       loadStopping: false,
       panel: panel.kind === 'running' || options.keepPanel ? panel : { kind: 'selection' },
     });
+    if (rereadAfterLoad) {
+      rereadAfterLoad = false;
+      rereadForLanguage();
+    }
   } catch (e) {
     if (mine !== session) return;
+    rereadAfterLoad = false;
     setState({ loading: false, loadWaitUntil: null, loadProgress: null, loadStopping: false });
     showError(asUiError(e));
   } finally {
@@ -239,14 +245,21 @@ function afterRun(): void {
  */
 function rereadForLanguage(): void {
   const s = getState();
-  if (s.screen !== 'main' || !s.inventory || s.tokenExpired) return;
-  if (s.panel.kind === 'running') rereadAfterRun = true;
-  else
-    void loadInventory({ keepPanel: true }).then(() => {
-      // Чтение сбросило план в ядре: открытый план запрашиваем заново, иначе «Запустить» скажет «инвентарь изменился».
-      const panel = getState().panel;
-      if (panel.kind === 'plan') void showPlan(panel.plan.operation);
-    });
+  if (s.screen !== 'main' || s.tokenExpired) return;
+  if (s.panel.kind === 'running') {
+    rereadAfterRun = true;
+    return;
+  }
+  if (s.loading) {
+    rereadAfterLoad = true;
+    return;
+  }
+  if (!s.inventory) return;
+  void loadInventory({ keepPanel: true }).then(() => {
+    // Чтение сбросило план в ядре: открытый план запрашиваем заново, иначе «Запустить» скажет «инвентарь изменился».
+    const panel = getState().panel;
+    if (panel.kind === 'plan') void showPlan(panel.plan.operation);
+  });
 }
 
 /**
@@ -256,6 +269,7 @@ function rereadForLanguage(): void {
 export function signIn(token: TokenInfo): void {
   session += 1;
   rereadAfterRun = false;
+  rereadAfterLoad = false;
   setState({
     screen: 'main',
     token,
@@ -281,6 +295,7 @@ export function signIn(token: TokenInfo): void {
 export async function forgetToken(): Promise<void> {
   session += 1;
   rereadAfterRun = false;
+  rereadAfterLoad = false;
   let failure: UiError | null = null;
   try {
     await api.forgetToken();
@@ -306,6 +321,15 @@ export async function forgetToken(): Promise<void> {
 }
 
 export async function copyJournal(): Promise<boolean> {
+  try {
+    if (typeof ClipboardItem !== 'undefined' && typeof navigator.clipboard?.write === 'function') {
+      const blob = api.journal().then((text) => new Blob([text], { type: 'text/plain' }));
+      await navigator.clipboard.write([new ClipboardItem({ 'text/plain': blob })]);
+      return true;
+    }
+  } catch {
+    // Fallback ниже: не все WebView поддерживают Promise-Blob в ClipboardItem.
+  }
   try {
     await navigator.clipboard.writeText(await api.journal());
     return true;

@@ -20,6 +20,7 @@
   "login.safe3": "The code is open under GPL-3.0. Builds are made on GitHub Actions, and each one comes with a provenance attestation.",
 
   "error.tokenNotFound": "There is no Steam token in this text. Copy the whole token page and paste it again.",
+  "error.tokenNotSignedIn": "The token page is empty — you are not signed in to Steam in this browser. Sign in on store.steampowered.com and reload the token page.",
   "error.tokenNoExpiry": "The token has no expiry date. Get a new one on the token page.",
   "error.tokenExpired": "The token has expired. Get a new one on the token page.",
   "error.tokenSteamIdMismatch": "The SteamID in the cookie does not match the token.",

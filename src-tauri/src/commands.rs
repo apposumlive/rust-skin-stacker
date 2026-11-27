@@ -38,6 +38,7 @@ impl From<TokenError> for UiError {
     fn from(e: TokenError) -> Self {
         UiError::new(match e {
             TokenError::NotFound => "tokenNotFound",
+            TokenError::NotSignedIn => "tokenNotSignedIn",
             TokenError::NoExpiry => "tokenNoExpiry",
             TokenError::Expired => "tokenExpired",
             TokenError::SteamIdMismatch => "tokenSteamIdMismatch",

@@ -179,18 +179,30 @@ function verdict(panel: Result): HTMLElement {
     const text = outcome.reason === 'tokenRejected' ? 'result.checkTokenRejected' : 'result.checkUnavailable';
     return h('p', { class: 'verdict bad' }, icon('alert-triangle'), t(text));
   }
-  if (reconciliation.before === reconciliation.after && reconciliation.mismatches.length === 0) {
+  if (reconciliation.before === reconciliation.after && reconciliation.mismatches.length === 0 && !reconciliation.unreadable) {
     return h('p', { class: 'verdict ok' }, icon('scale'), t('result.checkOk'));
+  }
+  const items = reconciliation.mismatches.map((m) =>
+    h('li', {}, t('result.mismatch', { name: m.name, before: fmtInt(m.before), after: fmtInt(m.after) })),
+  );
+  if (reconciliation.unreadable) {
+    items.push(
+      h(
+        'li',
+        {},
+        t('result.mismatch', {
+          name: t('stats.unreadable'),
+          before: fmtInt(reconciliation.unreadable.before),
+          after: fmtInt(reconciliation.unreadable.after),
+        }),
+      ),
+    );
   }
   return h(
     'div',
     { class: 'verdict bad' },
     h('p', {}, icon('alert-triangle'), t('result.checkBad')),
-    h(
-      'ul',
-      { class: 'mismatches num' },
-      ...reconciliation.mismatches.map((m) => h('li', {}, t('result.mismatch', { name: m.name, before: fmtInt(m.before), after: fmtInt(m.after) }))),
-    ),
+    items.length ? h('ul', { class: 'mismatches num' }, ...items) : null,
   );
 }
 

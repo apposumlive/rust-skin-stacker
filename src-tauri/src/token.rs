@@ -57,6 +57,8 @@ pub struct TokenInfo {
 pub enum TokenError {
     #[error("no Steam token found in the pasted text")]
     NotFound,
+    #[error("the token page is empty: not signed in to Steam Store in the browser")]
+    NotSignedIn,
     #[error("the token has no expiry")]
     NoExpiry,
     #[error("the token has expired")]
@@ -101,7 +103,22 @@ pub fn parse_token(raw: &str, now: i64) -> Result<Token, TokenError> {
             Err(_) => {}
         }
     }
+    if error == TokenError::NotFound && is_empty_config(raw) {
+        return Err(TokenError::NotSignedIn);
+    }
     Err(error)
+}
+
+/// Ответ `ajaxgetasyncconfig` без входа на `store.steampowered.com`: `{"success":1,"data":[]}`.
+fn is_empty_config(raw: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(raw.trim()) else {
+        return false;
+    };
+    value.get("success").is_some()
+        && value
+            .get("data")
+            .and_then(Value::as_array)
+            .is_some_and(Vec::is_empty)
 }
 
 fn candidates() -> &'static Regex {
@@ -317,5 +334,13 @@ mod tests {
         assert!(!shown.contains("tok-SECRET"), "{shown}");
         assert!(!shown.contains(ID), "{shown}");
         assert!(!token.is_expired(NOW));
+    }
+
+    #[test]
+    fn empty_config_reports_not_signed_in() {
+        assert_eq!(
+            parse_token(r#"{"success":1,"data":[]}"#, NOW),
+            Err(TokenError::NotSignedIn)
+        );
     }
 }

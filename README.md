@@ -40,7 +40,7 @@ All Linux builds, the AppImage included, need glibc 2.39 or newer: Ubuntu 24.04+
 
 Instead of your password, the app uses a temporary Steam token.
 
-1. In a browser where you are signed in to Steam, open <https://steamcommunity.com/pointssummary/ajaxgetasyncconfig>. The app has a button for it.
+1. In a browser where you are signed in to Steam, open <https://store.steampowered.com/pointssummary/ajaxgetasyncconfig>. The app has a button for it.
 2. Select everything on the page and copy it: Ctrl+A, then Ctrl+C.
 3. Paste it into the app. The app finds the token itself and shows which account it belongs to and how long it lasts (about a day).
 

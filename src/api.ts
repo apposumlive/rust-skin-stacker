@@ -8,7 +8,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import type { Lang } from './i18n';
 import type { Inventory, Operation, Plan, Progress, Settings, StartResult, TokenInfo, UiError } from './types';
 
-export const TOKEN_PAGE = 'https://steamcommunity.com/pointssummary/ajaxgetasyncconfig';
+export const TOKEN_PAGE = 'https://store.steampowered.com/pointssummary/ajaxgetasyncconfig';
 
 /** Размер окна и высота экрана в логических пикселях: от зума WebView они не зависят. */
 export interface WindowMetrics {

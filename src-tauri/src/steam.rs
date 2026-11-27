@@ -27,7 +27,7 @@ pub const PAGE_PAUSE: Duration = Duration::from_secs(1);
 pub const GET_RETRIES: u64 = 3;
 /// eresult 29 (DuplicateRequest): так Steam отвечает на чтение инвентаря сразу после разделения или сборки.
 /// Через несколько секунд то же чтение проходит.
-const DUPLICATE_REQUEST: i32 = 29;
+pub(crate) const DUPLICATE_REQUEST: i32 = 29;
 /// Дольше ждать по `Retry-After` не будем.
 pub const MAX_RETRY_AFTER: u64 = 60;
 /// Дольше одного запроса (вместе с телом ответа) не ждём.

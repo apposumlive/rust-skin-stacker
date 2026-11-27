@@ -123,8 +123,13 @@ pub async fn run<A: StackApi>(
         }
         // Пауза только между запросами и не после нажатия «Остановить».
         // Первый шаг пропущенным не бывает, поэтому `i > 0` — уже был запрос.
+        // «Остановить» обрывает паузу сразу, не дожидаясь её окончания.
         if i > 0 && !stop.load(Ordering::SeqCst) {
-            sleep(config.delay()).await;
+            tokio::select! {
+                biased;
+                () = stop_pressed(stop) => {}
+                () = sleep(config.delay()) => {}
+            }
         }
         if stop.load(Ordering::SeqCst) {
             journal.add("stopped by the user");
@@ -244,15 +249,23 @@ async fn send<A: StackApi>(
 }
 
 /// Окончательный отказ Steam: повтор не поможет, остаток стопки слать незачем.
-/// 401/403 (токен) и 429 (ожидание) обрабатываются отдельно и сюда не относятся.
+/// 401/403 (токен), 429 (ожидание) и eresult 29 (временный конфликт DuplicateRequest)
+/// не считаются постоянным отказом стопки.
 /// Сеть, 5xx и непонятный ответ — исход неизвестен, это не отказ.
 fn is_refusal(error: &SteamError) -> bool {
     match error {
-        SteamError::Rejected(_) => true,
+        SteamError::Rejected(code) => *code != crate::steam::DUPLICATE_REQUEST,
         SteamError::Http(status) => {
             (400..500).contains(status) && !matches!(status, 401 | 403 | 429)
         }
         _ => false,
+    }
+}
+
+/// Завершается, как только нажали «Остановить».
+async fn stop_pressed(stop: &AtomicBool) {
+    while !stop.load(Ordering::SeqCst) {
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
 }
 
@@ -1070,5 +1083,13 @@ mod tests {
             serde_json::to_string(&StopReason::TooManyFailures).unwrap(),
             r#""tooManyFailures""#
         );
+    }
+
+    #[test]
+    fn duplicate_request_is_not_a_permanent_refusal() {
+        assert!(!is_refusal(&SteamError::Rejected(
+            crate::steam::DUPLICATE_REQUEST
+        )));
+        assert!(is_refusal(&SteamError::Rejected(15)));
     }
 }

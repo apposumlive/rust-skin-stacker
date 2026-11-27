@@ -4,11 +4,24 @@
 import { h } from '../dom';
 import type { State } from '../store';
 import type { Card } from '../model';
+import type { Inventory } from '../types';
 import { entering, focusPlace, panelStep, showsLoad, shownOf, swallowsKey, takesFocus, type Shown } from './panel-diff';
 import { loadingView, patchLoading } from './panel-load';
 import { patchRunning, planView, resultView, runningView } from './panel-run';
 import { hintView, itemView, multiView } from './panel-select';
 import type { Part } from './shell';
+
+const cardsByInventory = new WeakMap<Inventory, Map<string, Card>>();
+
+function cardIndex(inventory: Inventory): Map<string, Card> {
+  let byId = cardsByInventory.get(inventory);
+  if (!byId) {
+    byId = new Map<string, Card>();
+    for (const skin of inventory.skins) for (const record of skin.records) byId.set(record.assetid, { skin, record });
+    cardsByInventory.set(inventory, byId);
+  }
+  return byId;
+}
 
 function view(state: State, tick: (fn: () => void) => void): HTMLElement {
   // Чтение без запуска перекрывает всё: и когда инвентаря ещё нет, и когда он есть, но выбор и план под ним не видны.
@@ -24,8 +37,7 @@ function view(state: State, tick: (fn: () => void) => void): HTMLElement {
     case 'result':
       return resultView(panel);
     case 'selection': {
-      const byId = new Map<string, Card>();
-      for (const skin of inventory.skins) for (const record of skin.records) byId.set(record.assetid, { skin, record });
+      const byId = cardIndex(inventory);
       const cards = state.selected.map((id) => byId.get(id)).filter((card): card is Card => card !== undefined);
       if (cards.length === 1) return itemView(cards[0], state);
       if (cards.length > 1) return multiView(cards);

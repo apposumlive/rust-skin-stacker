@@ -11,7 +11,7 @@
     "core:window:allow-current-monitor",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://steamcommunity.com/pointssummary/ajaxgetasyncconfig" }]
+      "allow": [{ "url": "https://store.steampowered.com/pointssummary/ajaxgetasyncconfig" }]
     }
   ]
 }
